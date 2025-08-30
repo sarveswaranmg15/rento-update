@@ -1,42 +1,50 @@
-import fs from 'fs';
-import path from 'path';
 import pool from './index';
 import bcrypt from 'bcryptjs';
+import { markStart, recordLog, markSuccess } from '../lib/bootstrap-status';
 
-const DB_FUNCTIONS_DIR = path.join(__dirname, '../db-functions');
+// Resolve db-functions at runtime from project root to work after bundling
+function getDbFunctionsDir() {
+    return `${process.cwd()}/db-functions`;
+}
 const SAMPLE_SUPER_ADMIN_EMAIL = 'admin@sample.com';
 const SAMPLE_TENANT_SUBDOMAIN = 'sampletenant';
 
 async function syncDbFunctions() {
-    const files = fs.readdirSync(DB_FUNCTIONS_DIR).filter(f => f.endsWith('.sql'));
+    const { readdir, readFile } = await import('node:fs/promises');
+    const { join } = await import('node:path');
+    const dir = getDbFunctionsDir();
+    // Ensure deterministic order (01_, 02_, 03_ ...)
+    const all = await readdir(dir);
+    const files = all.filter(f => f.endsWith('.sql')).sort((a, b) => a.localeCompare(b));
+
     for (const file of files) {
-        const sql = fs.readFileSync(path.join(DB_FUNCTIONS_DIR, file), 'utf-8');
-        // Split on semicolon for multiple statements, but keep PL/pgSQL blocks intact
-        const statements = sql.match(/(?:[^;']|'[^']*')+/g) || [];
-        for (const stmt of statements) {
-            const trimmed = stmt.trim();
-            if (trimmed.length > 0) {
-                try {
-                    await pool.query(trimmed);
-                } catch (err) {
-                    // Ignore 'already exists' errors, log others
-                    if (err instanceof Error) {
-                        if (!/already exists|duplicate|already defined/i.test(err.message)) {
-                            console.error(`Error running SQL from ${file}:`, err.message);
-                        }
-                    } else {
-                        console.error(`Unknown error running SQL from ${file}:`, err);
-                    }
+        recordLog(`[SQL] Applying ${file}`);
+        const sql = await readFile(join(dir, file), 'utf-8');
+        try {
+            // Execute full file to preserve $$ function bodies and semicolons inside
+            await pool.query(sql);
+            recordLog(`[SQL] Applied ${file}`);
+        } catch (err) {
+            if (err instanceof Error) {
+                if (!/already exists|duplicate|already defined/i.test(err.message)) {
+                    console.error(`Error running SQL from ${file}:`, err.message);
+                    recordLog(`[SQL] Error in ${file}: ${err.message}`);
                 }
+            } else {
+                console.error(`Unknown error running SQL from ${file}:`, err);
+                recordLog(`[SQL] Unknown error in ${file}`);
             }
         }
     }
 }
 
 export async function bootstrapDatabase() {
+    markStart();
+    recordLog('Syncing database functions and schemas');
     await syncDbFunctions();
 
     // Check if sample super admin exists
+    recordLog('Checking/creating sample super admin');
     const superAdminRes = await pool.query(
         'SELECT id FROM public.super_admins WHERE email = $1',
         [SAMPLE_SUPER_ADMIN_EMAIL]
@@ -54,8 +62,10 @@ export async function bootstrapDatabase() {
             ['Sample Admin', SAMPLE_SUPER_ADMIN_EMAIL, passwordHash, '1234567890', true]
         );
         superAdminId = insertAdminRes.rows[0].id;
+        recordLog(`Created sample super admin ${SAMPLE_SUPER_ADMIN_EMAIL}`);
     } else {
         superAdminId = superAdminRes.rows[0].id;
+        recordLog('Sample super admin exists');
     }
 
     // Check if sample tenant exists
@@ -66,6 +76,7 @@ export async function bootstrapDatabase() {
 
     if (tenantRes.rows.length === 0) {
         // Onboard sample tenant using onboard_tenant function
+        recordLog(`Onboarding tenant ${SAMPLE_TENANT_SUBDOMAIN}`);
         await pool.query(
             `SELECT onboard_tenant($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
             [
@@ -80,5 +91,8 @@ export async function bootstrapDatabase() {
                 superAdminId
             ]
         );
+        recordLog('Tenant onboarded');
     }
+
+    markSuccess();
 }

@@ -9,9 +9,18 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-env: {
-    NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY,
+  experimental: {
+    serverComponentsExternalPackages: [
+      "pg",
+      "pg-connection-string",
+      "bcryptjs",
+    ],
   },
-}
+  serverExternalPackages: ["pg", "pg-connection-string", "bcryptjs"],
+  env: {
+    NEXT_PUBLIC_GOOGLE_MAPS_API_KEY:
+      process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY,
+  },
+};
 
-export default nextConfig
+export default nextConfig;

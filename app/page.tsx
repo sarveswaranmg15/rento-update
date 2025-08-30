@@ -1,3 +1,5 @@
+"use client"
+
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -5,8 +7,39 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Car, Lock, Users, Play } from "lucide-react"
 import Image from "next/image"
+import { useState } from "react"
+import { useRouter } from "next/navigation"
 
 export default function SignInPage() {
+  const router = useRouter()
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function onSubmit() {
+    setError(null)
+    if (!email || !password) {
+      setError("Email and password are required")
+      return
+    }
+    setLoading(true)
+    try {
+      const res = await fetch("/api/auth/signin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, subdomain: process.env.NEXT_PUBLIC_TENANT || undefined })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || "Sign in failed")
+      // TODO: store token if needed
+      router.push("/dashboard")
+    } catch (e: any) {
+      setError(e.message || "Sign in failed")
+    } finally {
+      setLoading(false)
+    }
+  }
   return (
     <div className="min-h-screen warm-gradient flex">
       {/* Left side - Features */}
@@ -78,6 +111,8 @@ export default function SignInPage() {
                 type="email"
                 placeholder="Enter your email"
                 className="bg-white/80 border-[#d8d8d8] rounded-xl h-12 text-[#171717] placeholder:text-[#666666]"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
               />
             </div>
             <div className="space-y-2">
@@ -89,10 +124,13 @@ export default function SignInPage() {
                 type="password"
                 placeholder="Enter your password"
                 className="bg-white/80 border-[#d8d8d8] rounded-xl h-12 text-[#171717] placeholder:text-[#666666]"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
               />
             </div>
-            <Button className="w-full bg-[#ffc641] hover:bg-[#ffb91a] text-[#171717] font-semibold rounded-xl h-12 shadow-md">
-              Sign In
+            {error && <p className="text-sm text-red-600">{error}</p>}
+            <Button disabled={loading} onClick={onSubmit} className="w-full bg-[#ffc641] hover:bg-[#ffb91a] text-[#171717] font-semibold rounded-xl h-12 shadow-md">
+              {loading ? 'Signing in…' : 'Sign In'}
             </Button>
             <div className="text-center">
               <p className="text-sm text-[#333333]">
