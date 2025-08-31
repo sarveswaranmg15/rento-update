@@ -20,9 +20,25 @@ import {
 import HeaderControls from '@/components/header-controls'
 import UserInfoFooter from '@/components/user-info-footer'
 import { useEffect, useState } from 'react'
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+  CartesianGrid,
+} from 'recharts'
 export default function Dashboard() {
   const [counts, setCounts] = useState<{ total_drivers: number; total_employees: number } | null>(null)
   const [tenants, setTenants] = useState<Array<any>>([])
+  const [changes, setChanges] = useState<{ drivers_change: number; employees_change: number } | null>(null)
+  const [revenue, setRevenue] = useState<any | null>(null)
+  const [payments, setPayments] = useState<any[]>([])
+
+  const [trendsData, setTrendsData] = useState<any[]>([])
+  const [activeTab, setActiveTab] = useState<'history' | 'payment'>('history')
 
   useEffect(() => {
     async function load() {
@@ -32,11 +48,50 @@ export default function Dashboard() {
         const data = await res.json()
         setCounts(data.counts)
         setTenants(data.tenants || [])
+  setChanges(data.changes || null)
+  setRevenue(data.revenue || null)
+  setPayments(data.payments || [])
       } catch (e) {
         // ignore; frontend will show placeholders
       }
     }
     load()
+  }, [])
+
+  // derive a simple payments summary for Payment tab
+  const paymentSummary = payments.reduce((acc: Record<string, { count: number; total: number }>, p: any) => {
+    const method = p.payment_method || 'Unknown'
+    if (!acc[method]) acc[method] = { count: 0, total: 0 }
+    acc[method].count += 1
+    acc[method].total += Number(p.amount || 0)
+    return acc
+  }, {})
+
+  useEffect(() => {
+    let mounted = true
+    async function loadTrends() {
+      try {
+        const res = await fetch('/api/metrics/trends?days=30')
+        if (!res.ok) return
+        const data = await res.json()
+        const trends: Array<any> = data.trends || []
+        // trends come in DESC order; reverse to chronological
+        const prepared = trends
+          .slice()
+          .reverse()
+          .map((t: any) => ({
+            date: new Date(t.booking_date).toLocaleDateString(),
+            total: Number(t.total_bookings || 0),
+            completed: Number(t.completed_bookings || 0),
+            cancelled: Number(t.cancelled_bookings || 0),
+          }))
+        if (mounted) setTrendsData(prepared)
+      } catch (e) {
+        // ignore
+      }
+    }
+    loadTrends()
+    return () => { mounted = false }
   }, [])
   return (
     <div className="min-h-screen warm-gradient relative">
@@ -120,25 +175,40 @@ export default function Dashboard() {
           </div>
 
           <h2 className="text-xl font-bold text-[#171717] mb-4">Rides Summary</h2>
-          <div className="h-64 bg-gradient-to-r from-[#e3e3e3] to-[#f0f0f0] rounded-lg flex items-center justify-center mb-4">
-            <div className="w-full h-full relative">
-              <svg className="w-full h-full" viewBox="0 0 400 200">
-                <polyline
-                  fill="none"
-                  stroke="#00ff88"
-                  strokeWidth="3"
-                  points="20,150 60,120 100,140 140,100 180,110 220,80 260,90 300,70 340,100 380,120"
-                />
-              </svg>
-              <div className="absolute bottom-2 left-0 right-0 flex justify-between text-xs text-[#666666] px-4">
-                <span>3 July</span>
-                <span>4 July</span>
-                <span>5 July</span>
-                <span>6 July</span>
-                <span>7 July</span>
-                <span>8 July</span>
-                <span>9 July</span>
-              </div>
+          <div className="h-64 bg-gradient-to-r from-[#e3e3e3] to-[#f0f0f0] rounded-lg flex items-center justify-center mb-4 p-3">
+            <div className="w-full h-full">
+              <ResponsiveContainer width="100%" height="100%">
+                {
+                  (() => {
+                    // Ensure axes render even when there's no real data by using a small fallback dataset
+                    const hasRealData = trendsData && trendsData.length > 0
+                    const fallback = (() => {
+                      const d1 = new Date()
+                      const d2 = new Date(Date.now() + 24 * 60 * 60 * 1000)
+                      return [
+                        { date: d1.toLocaleDateString(), total: 0, completed: 0, cancelled: 0 },
+                        { date: d2.toLocaleDateString(), total: 0, completed: 0, cancelled: 0 },
+                      ]
+                    })()
+
+                    const chartData = hasRealData ? trendsData : fallback
+                    const yDomain = hasRealData ? undefined : [0, 1]
+
+                    return (
+                      <LineChart data={chartData} margin={{ top: 10, right: 20, left: 20, bottom: 10 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
+                        <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#333' }} stroke="#ccc" />
+                        <YAxis tick={{ fontSize: 11, fill: '#333' }} allowDecimals={false} domain={yDomain} stroke="#ccc" />
+                        <Tooltip />
+                        <Legend verticalAlign="bottom" height={24} />
+                        <Line type="monotone" dataKey="total" stroke="#00aaff" strokeWidth={2} dot={false} />
+                        <Line type="monotone" dataKey="completed" stroke="#00cc88" strokeWidth={2} dot={false} />
+                        <Line type="monotone" dataKey="cancelled" stroke="#ff6666" strokeWidth={2} dot={false} />
+                      </LineChart>
+                    )
+                  })()
+                }
+              </ResponsiveContainer>
             </div>
           </div>
 
@@ -153,9 +223,13 @@ export default function Dashboard() {
               </CardHeader>
               <CardContent>
           <div className="text-2xl font-bold text-[#171717]">{counts ? counts.total_drivers : '—'}</div>
-                <div className="flex items-center text-xs text-green-600 mt-1">
-                  <TrendingUp className="h-3 w-3 mr-1" />
-                  12%
+                <div className="flex items-center text-xs mt-1" style={{ color: changes ? (changes.drivers_change >= 0 ? '#16a34a' : '#dc2626') : '#16a34a' }}>
+                  {changes && changes.drivers_change < 0 ? (
+                    <TrendingDown className="h-3 w-3 mr-1" />
+                  ) : (
+                    <TrendingUp className="h-3 w-3 mr-1" />
+                  )}
+                  {changes ? `${Math.round(Math.abs(Number(changes.drivers_change)))}%` : '—'}
                 </div>
               </CardContent>
             </Card>
@@ -169,9 +243,13 @@ export default function Dashboard() {
               </CardHeader>
               <CardContent>
         <div className="text-2xl font-bold text-[#171717]">{counts ? counts.total_employees : '—'}</div>
-                <div className="flex items-center text-xs text-red-600 mt-1">
-                  <TrendingDown className="h-3 w-3 mr-1" />
-                  8%
+                <div className="flex items-center text-xs mt-1" style={{ color: changes ? (changes.employees_change >= 0 ? '#16a34a' : '#dc2626') : '#dc2626' }}>
+                  {changes && changes.employees_change < 0 ? (
+                    <TrendingDown className="h-3 w-3 mr-1" />
+                  ) : (
+                    <TrendingUp className="h-3 w-3 mr-1" />
+                  )}
+                  {changes ? `${Math.round(Math.abs(Number(changes.employees_change)))}%` : '—'}
                 </div>
               </CardContent>
             </Card>
@@ -187,35 +265,24 @@ export default function Dashboard() {
               </Button>
             </CardHeader>
             <CardContent className="space-y-4">
-      <div className="flex items-center justify-between p-3 rounded-lg bg-white/30">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center">
-                    <span className="text-xs font-medium text-orange-600">✦</span>
+              {tenants && tenants.length > 0 ? (
+                tenants.slice(0, 5).map((t: any, i: number) => (
+                  <div key={t.id ?? i} className="flex items-center justify-between p-3 rounded-lg bg-white/30">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
+                        <span className="text-xs font-medium text-gray-600">{(t.company_name || '').charAt(0).toUpperCase()}</span>
+                      </div>
+                      <div>
+                        <p className="font-medium text-[#171717]">{t.company_name}</p>
+                        <p className="text-xs text-[#333333]">{t.created_at ? new Date(t.created_at).toLocaleDateString() : ''}</p>
+                      </div>
+                    </div>
+                    <Button variant="ghost" size="sm" className="text-[#333333]">View</Button>
                   </div>
-                  <div>
-        <p className="font-medium text-[#171717]">{tenants[0]?.company_name ?? 'CRED'}</p>
-        <p className="text-xs text-[#333333]">{tenants[0]?.created_at ? new Date(tenants[0].created_at).toLocaleDateString() : 'Joined 5 days ago'}</p>
-                  </div>
-                </div>
-                <Button variant="ghost" size="sm" className="text-[#333333]">
-                  View
-                </Button>
-              </div>
-
-      <div className="flex items-center justify-between p-3 rounded-lg bg-white/30">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-pink-100 rounded-full flex items-center justify-center">
-                    <span className="text-xs font-medium text-pink-600">F</span>
-                  </div>
-                  <div>
-        <p className="font-medium text-[#171717]">{tenants[1]?.company_name ?? 'Flipkart'}</p>
-        <p className="text-xs text-[#333333]">{tenants[1]?.created_at ? new Date(tenants[1].created_at).toLocaleDateString() : 'Joined 10 days ago'}</p>
-                  </div>
-                </div>
-                <Button variant="ghost" size="sm" className="text-[#333333]">
-                  View
-                </Button>
-              </div>
+                ))
+              ) : (
+                <div className="text-sm text-[#555]">No tenant history available.</div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -230,7 +297,7 @@ export default function Dashboard() {
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <p className="text-sm opacity-80 mb-1">Total Revenue</p>
-                  <p className="text-2xl font-bold">$32,819.00</p>
+                  <p className="text-2xl font-bold">{revenue ? new Intl.NumberFormat(undefined, { style: 'currency', currency: 'INR' }).format(Number(revenue.total_revenue || 0)) : '$—'}</p>
                 </div>
                 <div className="w-10 h-6 bg-white/20 rounded flex items-center justify-center">
                   <CreditCard className="h-4 w-4" />
@@ -238,18 +305,18 @@ export default function Dashboard() {
               </div>
               <div className="flex items-center justify-between text-sm">
                 <div>
-                  <p className="opacity-80">Visa</p>
-                  <p>•••• •••• •••• 1890</p>
+                  <p className="opacity-80">{revenue && revenue.recent_payment_method ? revenue.recent_payment_method : '—'}</p>
+                  <p>{revenue && revenue.recent_payment_number ? revenue.recent_payment_number : '—'}</p>
                 </div>
                 <div className="text-right">
-                  <p>05/26</p>
+                  <p>{revenue && revenue.recent_payment_date ? new Date(revenue.recent_payment_date).toLocaleDateString() : '—'}</p>
                 </div>
               </div>
               <ChevronRight className="absolute top-1/2 right-4 transform -translate-y-1/2 h-5 w-5 opacity-60" />
             </CardContent>
           </Card>
 
-          {/* Admin Card Details */}
+          {/* Admin Card Details (from payments) */}
           <Card className="form-card mb-6">
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-lg font-semibold text-[#171717]">Admin</CardTitle>
@@ -260,20 +327,20 @@ export default function Dashboard() {
             <CardContent>
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <p className="text-[#333333] mb-1">Card name</p>
-                  <p className="font-medium text-[#171717]">Emirhan Dikci</p>
+                  <p className="text-[#333333] mb-1">Last payment method</p>
+                  <p className="font-medium text-[#171717]">{payments && payments.length > 0 ? (payments[0].payment_method || '-') : '-'}</p>
                 </div>
                 <div>
-                  <p className="text-[#333333] mb-1">Card no</p>
-                  <p className="font-medium text-[#171717]">•••• •••• •••• 1234</p>
+                  <p className="text-[#333333] mb-1">Last payment no</p>
+                  <p className="font-medium text-[#171717]">{payments && payments.length > 0 ? (payments[0].payment_number || '-') : '-'}</p>
                 </div>
                 <div>
-                  <p className="text-[#333333] mb-1">CVV</p>
-                  <p className="font-medium text-[#171717]">•••</p>
+                  <p className="text-[#333333] mb-1">Last amount</p>
+                  <p className="font-medium text-[#171717]">{payments && payments.length > 0 ? new Intl.NumberFormat(undefined, { style: 'currency', currency: 'INR' }).format(Number(payments[0].amount || 0)) : '-'}</p>
                 </div>
                 <div>
-                  <p className="text-[#333333] mb-1">Valid until</p>
-                  <p className="font-medium text-[#171717]">01/31</p>
+                  <p className="text-[#333333] mb-1">Last paid</p>
+                  <p className="font-medium text-[#171717]">{payments && payments.length > 0 ? (payments[0].payment_date ? new Date(payments[0].payment_date).toLocaleDateString() : '-') : '-'}</p>
                 </div>
               </div>
             </CardContent>
@@ -283,28 +350,55 @@ export default function Dashboard() {
           <Card className="form-card">
             <CardHeader>
               <div className="flex space-x-4 border-b border-[#d8d8d8]">
-                <Button variant="ghost" className="border-b-2 border-[#171717] text-[#171717] rounded-none">
+                <Button
+                  variant="ghost"
+                  className={"rounded-none " + (activeTab === 'history' ? 'border-b-2 border-[#171717] text-[#171717]' : 'text-[#333333]')}
+                  onClick={() => setActiveTab('history')}
+                >
                   History
                 </Button>
-                <Button variant="ghost" className="text-[#333333] rounded-none">
+                <Button
+                  variant="ghost"
+                  className={"rounded-none " + (activeTab === 'payment' ? 'border-b-2 border-[#171717] text-[#171717]' : 'text-[#333333]')}
+                  onClick={() => setActiveTab('payment')}
+                >
                   Payment
                 </Button>
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
-              {[
-                { name: "Tokopaedi", status: "Completed" },
-                { name: "Bli bli", status: "Completed" },
-                { name: "Amazon", status: "Completed" },
-                { name: "Amazon", status: "Completed" },
-              ].map((transaction, index) => (
-                <div key={index} className="flex items-center justify-between py-2">
-                  <span className="font-medium text-[#171717]">{transaction.name}</span>
-                  <Badge variant="secondary" className="bg-purple-100 text-purple-700">
-                    {transaction.status}
-                  </Badge>
-                </div>
-              ))}
+              {activeTab === 'history' ? (
+                payments && payments.length > 0 ? (
+                  payments.map((p, index) => (
+                    <div key={p.payment_number ?? index} className="flex items-center justify-between py-2">
+                      <div>
+                        <span className="font-medium text-[#171717]">{p.payment_description || p.payment_method || p.payment_number}</span>
+                        <div className="text-xs text-[#555]">{p.payment_date ? new Date(p.payment_date).toLocaleString() : ''}</div>
+                      </div>
+                      <Badge variant="secondary" className="bg-purple-100 text-purple-700">
+                        {p.payment_status || 'Unknown'}
+                      </Badge>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-sm text-[#555]">No transactions available.</div>
+                )
+              ) : (
+                // Payment tab: show summary by payment method
+                Object.keys(paymentSummary).length > 0 ? (
+                  Object.entries(paymentSummary).map(([method, info]) => (
+                    <div key={method} className="flex items-center justify-between py-2">
+                      <div>
+                        <span className="font-medium text-[#171717]">{method}</span>
+                        <div className="text-xs text-[#555]">{info.count} transaction{info.count > 1 ? 's' : ''}</div>
+                      </div>
+                      <div className="font-medium text-[#171717]">{new Intl.NumberFormat(undefined, { style: 'currency', currency: 'INR' }).format(info.total)}</div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-sm text-[#555]">No payment methods available.</div>
+                )
+              )}
             </CardContent>
           </Card>
         </div>
