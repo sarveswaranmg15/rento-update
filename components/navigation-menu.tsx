@@ -65,7 +65,7 @@ export default function NavigationMenu({ active }: Props) {
           Profile
         </Button>
       </Link>
-      <Link href="/book-ride">
+      {/* <Link href="/book-ride">
         <Button variant={active === 'book-ride' ? 'secondary' : 'ghost'} className={active === 'book-ride' ? 'w-full justify-start bg-white/60 text-[#171717] hover:bg-white/80 rounded-full' : 'w-full justify-start text-[#171717] hover:bg-white/20'}>
           Book Ride
         </Button>
@@ -79,7 +79,7 @@ export default function NavigationMenu({ active }: Props) {
         <Button variant={active === 'pool-ride' ? 'secondary' : 'ghost'} className={active === 'pool-ride' ? 'w-full justify-start bg-white/60 text-[#171717] hover:bg-white/80 rounded-full' : 'w-full justify-start text-[#171717] hover:bg-white/20'}>
           Pool Ride
         </Button>
-      </Link>
+      </Link> */}
     </nav>
   )
 }
