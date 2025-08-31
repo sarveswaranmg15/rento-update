@@ -29,6 +29,11 @@ export default function RoutesPage() {
   const [sortField, setSortField] = useState('created_at')
   const [sortDir, setSortDir] = useState<'asc'|'desc'>('desc')
   const [filterOpen, setFilterOpen] = useState(false)
+  const [isActiveFilter, setIsActiveFilter] = useState<string>('')
+  const [minDistance, setMinDistance] = useState<string>('')
+  const [maxDistance, setMaxDistance] = useState<string>('')
+  const [startLocationFilter, setStartLocationFilter] = useState<string>('')
+  const [endLocationFilter, setEndLocationFilter] = useState<string>('')
 
   async function exportCsv() {
     try {
@@ -36,6 +41,11 @@ export default function RoutesPage() {
       if (searchTerm) params.set('search', searchTerm)
       if (sortField) params.set('sort', sortField)
       if (sortDir) params.set('dir', sortDir)
+  if (isActiveFilter) params.set('is_active', isActiveFilter)
+  if (minDistance) params.set('min_distance', minDistance)
+  if (maxDistance) params.set('max_distance', maxDistance)
+  if (startLocationFilter) params.set('start_location', startLocationFilter)
+  if (endLocationFilter) params.set('end_location', endLocationFilter)
       params.set('export', 'csv')
 
       const res = await fetch('/api/routes?' + params.toString())
@@ -61,6 +71,11 @@ export default function RoutesPage() {
   if (sortDir) params.set('dir', sortDir)
     params.set('limit', String(limit))
     params.set('offset', String(offset))
+  if (isActiveFilter) params.set('is_active', isActiveFilter)
+  if (minDistance) params.set('min_distance', minDistance)
+  if (maxDistance) params.set('max_distance', maxDistance)
+  if (startLocationFilter) params.set('start_location', startLocationFilter)
+  if (endLocationFilter) params.set('end_location', endLocationFilter)
 
     const res = await fetch('/api/routes?' + params.toString())
     if (!res.ok) return
@@ -115,7 +130,7 @@ export default function RoutesPage() {
                   Filter
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-56">
+              <PopoverContent className="w-72">
                 <div className="flex flex-col gap-3">
                   <label className="text-sm text-gray-600">Sort by</label>
                   <select value={sortField} onChange={(e)=> setSortField(e.target.value)} className="bg-white/60 border-[#d8d8d8] p-2 rounded">
@@ -125,6 +140,31 @@ export default function RoutesPage() {
                     <option value="frequency_minutes">Frequency</option>
                     <option value="name">Name</option>
                   </select>
+
+                  <label className="text-sm text-gray-600">Status</label>
+                  <select value={isActiveFilter} onChange={(e)=> setIsActiveFilter(e.target.value)} className="bg-white/60 border-[#d8d8d8] p-2 rounded">
+                    <option value="">Any</option>
+                    <option value="true">Active</option>
+                    <option value="false">Inactive</option>
+                  </select>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-sm text-gray-600">Min distance</label>
+                      <input value={minDistance} onChange={(e)=> setMinDistance(e.target.value)} className="w-full p-2 bg-white/60 border-[#d8d8d8] rounded" />
+                    </div>
+                    <div>
+                      <label className="text-sm text-gray-600">Max distance</label>
+                      <input value={maxDistance} onChange={(e)=> setMaxDistance(e.target.value)} className="w-full p-2 bg-white/60 border-[#d8d8d8] rounded" />
+                    </div>
+                  </div>
+
+                  <label className="text-sm text-gray-600">Start location</label>
+                  <input value={startLocationFilter} onChange={(e)=> setStartLocationFilter(e.target.value)} className="w-full p-2 bg-white/60 border-[#d8d8d8] rounded" />
+
+                  <label className="text-sm text-gray-600">End location</label>
+                  <input value={endLocationFilter} onChange={(e)=> setEndLocationFilter(e.target.value)} className="w-full p-2 bg-white/60 border-[#d8d8d8] rounded" />
+
                   <div className="flex items-center gap-2">
                     <Button variant="outline" className="bg-white/60 border-[#d8d8d8]" onClick={()=> { setSortDir(s=> s==='asc' ? 'desc' : 'asc'); }}>
                       <ArrowUpDown className="h-4 w-4 mr-2" />
