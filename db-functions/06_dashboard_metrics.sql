@@ -24,6 +24,32 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Non-breaking v2: returns fleet manager percent change and total count (safer to deploy as new function)
+-- (removed experimental v2 function; restoring original get_dashboard_changes below)
+
+-- Returns driver related metrics: total drivers, total fleet managers (users with fleet_manager role), active drivers
+CREATE OR REPLACE FUNCTION get_driver_metrics(p_schema_name text)
+RETURNS TABLE(
+  total_drivers bigint,
+  total_fleet_managers bigint,
+  active_drivers bigint
+) AS $$
+BEGIN
+  -- Set search path to tenant schema
+  EXECUTE format('SET search_path TO %I, public', p_schema_name);
+
+  RETURN QUERY EXECUTE format('
+    SELECT
+      (SELECT COUNT(*) FROM %I.drivers) AS total_drivers,
+      (SELECT COUNT(*) FROM %I.users u JOIN public.roles r ON u.role_id = r.id WHERE r.name = ''fleet_manager'') AS total_fleet_managers,
+      (SELECT COUNT(*) FROM %I.drivers WHERE status = ''active'') AS active_drivers
+  ', p_schema_name, p_schema_name, p_schema_name);
+
+  -- Reset search path
+  SET search_path TO public;
+END;
+$$ LANGUAGE plpgsql;
+
 -- Returns recent payments for a tenant schema
 CREATE OR REPLACE FUNCTION get_recent_payments(p_schema_name text, p_limit integer DEFAULT 5)
 RETURNS TABLE(
