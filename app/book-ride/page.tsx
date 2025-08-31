@@ -5,9 +5,10 @@ import { Input } from "@/components/ui/input"
 import { Bell, Settings, User, MapPin } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
-import UserInfoFooter from '@/components/user-info-footer'
+import NavigationMenu from '@/components/navigation-menu'
 import { GoogleMap, LoadScript, OverlayView, Polygon, MarkerF } from "@react-google-maps/api";
 import { useEffect, useMemo, useRef, useState } from "react"
+import QuickActions from '@/components/quick-actions'
 
 export default function BookRidePage() {
   const defaultCenter = { lat: 13.0827, lng: 80.2707 }
@@ -237,69 +238,8 @@ export default function BookRidePage() {
           </div>
 
           {/* Navigation Menu */}
-          <nav className="space-y-1 mb-8">
-            <Link href="/dashboard">
-              <Button variant="ghost" className="w-full justify-start text-[#171717] hover:bg-white/20">
-                Dashboard
-              </Button>
-            </Link>
-            <Link href="/bookings">
-              <Button variant="ghost" className="w-full justify-start text-[#171717] hover:bg-white/20">
-                Bookings
-              </Button>
-            </Link>
-            <Link href="/drivers">
-              <Button variant="ghost" className="w-full justify-start text-[#171717] hover:bg-white/20">
-                Drivers
-              </Button>
-            </Link>
-            <Link href="/routes">
-              <Button variant="ghost" className="w-full justify-start text-[#171717] hover:bg-white/20">
-                Routes
-              </Button>
-            </Link>
-            <Link href="/analytics">
-              <Button variant="ghost" className="w-full justify-start text-[#171717] hover:bg-white/20">
-                Analytics
-              </Button>
-            </Link>
-            <Link href="/admin-panel">
-              <Button variant="ghost" className="w-full justify-start text-[#171717] hover:bg-white/20">
-                Admin Panel
-              </Button>
-            </Link>
-            <Link href="/my-bookings">
-              <Button variant="ghost" className="w-full justify-start text-[#171717] hover:bg-white/20">
-                My Bookings
-              </Button>
-            </Link>
-            <Link href="/profile">
-              <Button variant="ghost" className="w-full justify-start text-[#171717] hover:bg-white/20">
-                Profile
-              </Button>
-            </Link>
-          </nav>
-
-          {/* Quick Actions */}
-          <div className="space-y-3 shadow">
-            <h3 className="text-sm font-medium text-[#333333] mb-3">Quick Actions</h3>
-            <Button
-              variant="secondary"
-              className="w-full bg-white/60 text-[#171717] hover:bg-white/80 rounded-full px-3.5 mx-0"
-            >
-              Book Ride
-            </Button>
-            <Link href="/schedule-ride">
-              <Button className="w-full bg-[#ffc641] hover:bg-[#ffb800] text-[#171717] font-medium my-3 py-0">
-                Schedule Ride
-              </Button>
-            </Link>
-            <Link href="/pool-ride">
-              <Button className="w-full bg-[#ffc641] hover:bg-[#ffb800] text-[#171717] font-medium">Pool Ride</Button>
-            </Link>
-          </div>
-
-            <UserInfoFooter />
+          <NavigationMenu active="book-ride" />
+          <QuickActions />
         </div>
 
         {/* Main Content */}

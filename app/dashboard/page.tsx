@@ -18,7 +18,8 @@ import {
 } from "lucide-react"
 
 import HeaderControls from '@/components/header-controls'
-import UserInfoFooter from '@/components/user-info-footer'
+import NavigationMenu from '@/components/navigation-menu'
+import QuickActions from '@/components/quick-actions'
 import { useEffect, useState } from 'react'
 import {
   ResponsiveContainer,
@@ -105,67 +106,8 @@ export default function Dashboard() {
           </div>
 
           {/* Navigation Menu */}
-          <nav className="space-y-1 mb-8">
-            <Button
-              variant="secondary"
-              className="w-full justify-start bg-white/60 text-[#171717] hover:bg-white/80 rounded-full"
-            >
-              Dashboard
-            </Button>
-            <Link href="/bookings">
-              <Button variant="ghost" className="w-full justify-start text-[#171717] hover:bg-white/20">
-                Bookings
-              </Button>
-            </Link>
-            <Link href="/drivers">
-              <Button variant="ghost" className="w-full justify-start text-[#171717] hover:bg-white/20">
-                Drivers
-              </Button>
-            </Link>
-            <Link href="/routes">
-              <Button variant="ghost" className="w-full justify-start text-[#171717] hover:bg-white/20">
-                Routes
-              </Button>
-            </Link>
-            <Link href="/analytics">
-              <Button variant="ghost" className="w-full justify-start text-[#171717] hover:bg-white/20">
-                Analytics
-              </Button>
-            </Link>
-            <Link href="/admin-panel">
-              <Button variant="ghost" className="w-full justify-start text-[#171717] hover:bg-white/20">
-                Admin Panel
-              </Button>
-            </Link>
-            <Link href="/my-bookings">
-              <Button variant="ghost" className="w-full justify-start text-[#171717] hover:bg-white/20">
-                My Bookings
-              </Button>
-            </Link>
-            <Link href="/profile">
-              <Button variant="ghost" className="w-full justify-start text-[#171717] hover:bg-white/20">
-                Profile
-              </Button>
-            </Link>
-          </nav>
-
-          {/* Quick Actions */}
-          <div className="space-y-3 shadow">
-            <h3 className="text-sm font-medium text-[#333333] mb-3">Quick Actions</h3>
-            <Link href="/book-ride">
-              <Button className="w-full bg-[#ffc641] hover:bg-[#ffb800] text-[#171717] font-medium px-3.5 mx-0">Book Ride</Button>
-            </Link>
-            <Link href="/schedule-ride">
-              <Button className="w-full bg-[#ffc641] hover:bg-[#ffb800] text-[#171717] font-medium my-3 py-0">
-                Schedule Ride
-              </Button>
-            </Link>
-            <Link href="/pool-ride">
-              <Button className="w-full bg-[#ffc641] hover:bg-[#ffb800] text-[#171717] font-medium">Pool Ride</Button>
-            </Link>
-          </div>
-
-          <UserInfoFooter />
+          <NavigationMenu active="dashboard" />
+          <QuickActions />
         </div>
 
         {/* Main Content Area */}
@@ -297,50 +239,20 @@ export default function Dashboard() {
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <p className="text-sm opacity-80 mb-1">Total Revenue</p>
-                  <p className="text-2xl font-bold">{revenue ? new Intl.NumberFormat(undefined, { style: 'currency', currency: 'INR' }).format(Number(revenue.total_revenue || 0)) : '$—'}</p>
+                  <p className="text-2xl font-bold">{revenue ? new Intl.NumberFormat(undefined, { style: 'currency', currency: 'INR' }).format(Number(revenue.total_revenue || 0)) : '—'}</p>
                 </div>
                 <div className="w-10 h-6 bg-white/20 rounded flex items-center justify-center">
                   <CreditCard className="h-4 w-4" />
                 </div>
               </div>
-              <div className="flex items-center justify-between text-sm">
-                <div>
-                  <p className="opacity-80">{revenue && revenue.recent_payment_method ? revenue.recent_payment_method : '—'}</p>
-                  <p>{revenue && revenue.recent_payment_number ? revenue.recent_payment_number : '—'}</p>
-                </div>
-                <div className="text-right">
-                  <p>{revenue && revenue.recent_payment_date ? new Date(revenue.recent_payment_date).toLocaleDateString() : '—'}</p>
-                </div>
-              </div>
-              <ChevronRight className="absolute top-1/2 right-4 transform -translate-y-1/2 h-5 w-5 opacity-60" />
-            </CardContent>
-          </Card>
 
-          {/* Admin Card Details (from payments) */}
-          <Card className="form-card mb-6">
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-lg font-semibold text-[#171717]">Admin</CardTitle>
-              <Button variant="ghost" size="sm">
-                <Settings className="h-4 w-4" />
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-[#333333] mb-1">Last payment method</p>
-                  <p className="font-medium text-[#171717]">{payments && payments.length > 0 ? (payments[0].payment_method || '-') : '-'}</p>
+              <div className="flex items-center justify-between text-sm">
+                <div className="flex-1">
+                  <p className="text-[#e5e7eb] mb-1">Last payment method</p>
+                  <p className="font-medium">{payments && payments.length > 0 ? (payments[0].payment_method || '-') : '-'}</p>
                 </div>
-                <div>
-                  <p className="text-[#333333] mb-1">Last payment no</p>
-                  <p className="font-medium text-[#171717]">{payments && payments.length > 0 ? (payments[0].payment_number || '-') : '-'}</p>
-                </div>
-                <div>
-                  <p className="text-[#333333] mb-1">Last amount</p>
-                  <p className="font-medium text-[#171717]">{payments && payments.length > 0 ? new Intl.NumberFormat(undefined, { style: 'currency', currency: 'INR' }).format(Number(payments[0].amount || 0)) : '-'}</p>
-                </div>
-                <div>
-                  <p className="text-[#333333] mb-1">Last paid</p>
-                  <p className="font-medium text-[#171717]">{payments && payments.length > 0 ? (payments[0].payment_date ? new Date(payments[0].payment_date).toLocaleDateString() : '-') : '-'}</p>
+                <div className="ml-4">
+                  <Settings className="h-4 w-4 text-white" />
                 </div>
               </div>
             </CardContent>
