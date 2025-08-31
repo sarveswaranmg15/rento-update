@@ -508,8 +508,8 @@ BEGIN
     EXECUTE format('SET search_path TO %I, public', p_schema_name);
     
     RETURN QUERY EXECUTE format('
-        SELECT b.id, b.booking_number, 
-               CONCAT(u.first_name, '' '', u.last_name) as user_name,
+    SELECT b.id, b.booking_number, 
+           CONCAT(u.first_name, '' '', u.last_name)::varchar(255) as user_name,
                b.pickup_location, b.dropoff_location, b.scheduled_pickup_time,
                b.status, b.estimated_cost, b.created_at
         FROM %I.bookings b
