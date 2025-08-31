@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input"
 import { Bell, Settings, User, MapPin, Calendar, Clock } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
+import UserInfoFooter from '@/components/user-info-footer'
 import { GoogleMap, LoadScript } from "@react-google-maps/api";
 
 export default function PoolRidePage() {
@@ -102,7 +103,7 @@ export default function PoolRidePage() {
             >
               Pool Ride
             </Button>
-            <div className="mt-8 text-xs text-[#333333]">Rento Admin Sunday 17 August, 2025</div>
+            <UserInfoFooter />
           </div>
         </div>
         {/* Main Content */}

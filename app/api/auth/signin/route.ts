@@ -39,7 +39,34 @@ export async function POST(req: NextRequest) {
     // Update last_login
     await pool.query(`UPDATE ${schema}.users SET last_login = NOW() WHERE id = $1`, [user.id])
 
-    return NextResponse.json({ ok: true, token, user: { id: user.id, name: `${user.first_name} ${user.last_name}`.trim(), email: user.email } })
+    // Fetch user context: role, permissions and tenant info from DB function
+    try {
+      const ctxRes = await pool.query(`SELECT * FROM public.get_user_context($1, $2)`, [schema, email])
+      const ctx = ctxRes.rows && ctxRes.rows[0]
+
+      const userContext = ctx
+        ? {
+          id: ctx.user_id,
+          firstName: ctx.first_name,
+          lastName: ctx.last_name,
+          email: ctx.email,
+          role: ctx.role_name,
+          permissions: ctx.permissions || [],
+          tenant: {
+            id: ctx.tenant_id,
+            companyName: ctx.company_name,
+            subdomain: ctx.subdomain,
+            schemaName: ctx.schema_name
+          }
+        }
+        : { id: user.id, firstName: user.first_name, lastName: user.last_name, email: user.email }
+
+      return NextResponse.json({ ok: true, token, user: userContext })
+    } catch (ctxErr: any) {
+      console.error('user context fetch error', ctxErr)
+      // Return basic user info if context fetch fails
+      return NextResponse.json({ ok: true, token, user: { id: user.id, name: `${user.first_name} ${user.last_name}`.trim(), email: user.email } })
+    }
   } catch (err: any) {
     console.error('signin error', err)
     return NextResponse.json({ error: 'Signin failed' }, { status: 500 })

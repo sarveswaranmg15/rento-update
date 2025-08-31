@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input"
 import { Bell, Settings, User, MapPin } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
+import UserInfoFooter from '@/components/user-info-footer'
 import { GoogleMap, LoadScript, OverlayView, Polygon, MarkerF } from "@react-google-maps/api";
 import { useEffect, useMemo, useRef, useState } from "react"
 
@@ -298,7 +299,7 @@ export default function BookRidePage() {
             </Link>
           </div>
 
-          <div className="mt-8 text-xs text-[#333333]">Rento Admin Sunday 17 August, 2025</div>
+            <UserInfoFooter />
         </div>
 
         {/* Main Content */}

@@ -32,7 +32,14 @@ export default function SignInPage() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error || "Sign in failed")
-      // TODO: store token if needed
+      // Store token and user context in sessionStorage
+      try {
+        if (data.token) sessionStorage.setItem('token', data.token)
+        if (data.user) sessionStorage.setItem('user', JSON.stringify(data.user))
+      } catch (storageErr) {
+        // ignore storage errors (e.g., private mode) and continue
+        console.error('sessionStorage error', storageErr)
+      }
       router.push("/dashboard")
     } catch (e: any) {
       setError(e.message || "Sign in failed")

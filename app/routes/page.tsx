@@ -3,6 +3,8 @@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Bell, Settings, User, ChevronDown, Filter, ArrowUpDown, MapPin } from "lucide-react"
+import HeaderControls from '@/components/header-controls'
+import UserInfoFooter from '@/components/user-info-footer'
 import Link from "next/link"
 import Image from "next/image"
 
@@ -92,7 +94,7 @@ export default function RoutesPage() {
             </Link>
           </div>
 
-          <div className="mt-8 text-xs text-[#333333]">Rento Admin Sunday 17 August, 2025</div>
+          <UserInfoFooter />
         </div>
 
         {/* Main Content */}
@@ -100,22 +102,7 @@ export default function RoutesPage() {
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
             <h1 className="text-2xl font-bold text-[#171717]">Routes</h1>
-            <div className="flex items-center gap-3">
-              <Button variant="outline" className="bg-white/60 border-[#d8d8d8]">
-                <Settings className="h-4 w-4 mr-2" />
-                Select Tenant
-                <ChevronDown className="h-4 w-4 ml-2" />
-              </Button>
-              <Button variant="ghost" size="sm">
-                <Bell className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="sm">
-                <Settings className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="sm">
-                <User className="h-4 w-4" />
-              </Button>
-            </div>
+            <HeaderControls />
           </div>
 
           {/* Search and Controls */}

@@ -141,8 +141,27 @@ BEGIN
     v_sql := v_sql || format(' WHERE id = $%s', v_param_count);
     v_params[v_param_count] := p_user_id::text;
     
-    -- Execute update
-    EXECUTE v_sql USING VARIADIC v_params;
+    -- Execute update (compatibility: expand params up to 8 to avoid VARIADIC keyword issues)
+    IF v_param_count = 0 THEN
+        EXECUTE v_sql;
+    ELSIF v_param_count = 1 THEN
+        EXECUTE v_sql USING v_params[1];
+    ELSIF v_param_count = 2 THEN
+        EXECUTE v_sql USING v_params[1], v_params[2];
+    ELSIF v_param_count = 3 THEN
+        EXECUTE v_sql USING v_params[1], v_params[2], v_params[3];
+    ELSIF v_param_count = 4 THEN
+        EXECUTE v_sql USING v_params[1], v_params[2], v_params[3], v_params[4];
+    ELSIF v_param_count = 5 THEN
+        EXECUTE v_sql USING v_params[1], v_params[2], v_params[3], v_params[4], v_params[5];
+    ELSIF v_param_count = 6 THEN
+        EXECUTE v_sql USING v_params[1], v_params[2], v_params[3], v_params[4], v_params[5], v_params[6];
+    ELSIF v_param_count = 7 THEN
+        EXECUTE v_sql USING v_params[1], v_params[2], v_params[3], v_params[4], v_params[5], v_params[6], v_params[7];
+    ELSE
+    -- Fallback: VARIADIC may not be supported in this PG environment; raise a descriptive error
+    RAISE EXCEPTION 'Dynamic execute with % params not supported in this PostgreSQL environment (no VARIADIC support).', v_param_count;
+    END IF;
     
     -- Reset search path
     SET search_path TO public;
@@ -405,8 +424,26 @@ BEGIN
     v_sql := v_sql || format(' WHERE id = $%s', v_param_count);
     v_params[v_param_count] := p_booking_id::text;
     
-    -- Execute update
-    EXECUTE v_sql USING VARIADIC v_params;
+    -- Execute update (compatibility: expand params up to 8 to avoid VARIADIC keyword issues)
+    IF v_param_count = 0 THEN
+        EXECUTE v_sql;
+    ELSIF v_param_count = 1 THEN
+        EXECUTE v_sql USING v_params[1];
+    ELSIF v_param_count = 2 THEN
+        EXECUTE v_sql USING v_params[1], v_params[2];
+    ELSIF v_param_count = 3 THEN
+        EXECUTE v_sql USING v_params[1], v_params[2], v_params[3];
+    ELSIF v_param_count = 4 THEN
+        EXECUTE v_sql USING v_params[1], v_params[2], v_params[3], v_params[4];
+    ELSIF v_param_count = 5 THEN
+        EXECUTE v_sql USING v_params[1], v_params[2], v_params[3], v_params[4], v_params[5];
+    ELSIF v_param_count = 6 THEN
+        EXECUTE v_sql USING v_params[1], v_params[2], v_params[3], v_params[4], v_params[5], v_params[6];
+    ELSIF v_param_count = 7 THEN
+        EXECUTE v_sql USING v_params[1], v_params[2], v_params[3], v_params[4], v_params[5], v_params[6], v_params[7];
+    ELSE
+    RAISE EXCEPTION 'Dynamic execute with % params not supported in this PostgreSQL environment (no VARIADIC support).', v_param_count;
+    END IF;
     
     -- Reset search path
     SET search_path TO public;
@@ -586,8 +623,26 @@ BEGIN
     v_sql := v_sql || format(' WHERE id = $%s', v_param_count);
     v_params[v_param_count] := p_driver_id::text;
     
-    -- Execute update
-    EXECUTE v_sql USING VARIADIC v_params;
+    -- Execute update (compatibility: expand params up to 8 to avoid VARIADIC keyword issues)
+    IF v_param_count = 0 THEN
+        EXECUTE v_sql;
+    ELSIF v_param_count = 1 THEN
+        EXECUTE v_sql USING v_params[1];
+    ELSIF v_param_count = 2 THEN
+        EXECUTE v_sql USING v_params[1], v_params[2];
+    ELSIF v_param_count = 3 THEN
+        EXECUTE v_sql USING v_params[1], v_params[2], v_params[3];
+    ELSIF v_param_count = 4 THEN
+        EXECUTE v_sql USING v_params[1], v_params[2], v_params[3], v_params[4];
+    ELSIF v_param_count = 5 THEN
+        EXECUTE v_sql USING v_params[1], v_params[2], v_params[3], v_params[4], v_params[5];
+    ELSIF v_param_count = 6 THEN
+        EXECUTE v_sql USING v_params[1], v_params[2], v_params[3], v_params[4], v_params[5], v_params[6];
+    ELSIF v_param_count = 7 THEN
+        EXECUTE v_sql USING v_params[1], v_params[2], v_params[3], v_params[4], v_params[5], v_params[6], v_params[7];
+    ELSE
+    RAISE EXCEPTION 'Dynamic execute with % params not supported in this PostgreSQL environment (no VARIADIC support).', v_param_count;
+    END IF;
     
     -- Reset search path
     SET search_path TO public;
@@ -841,8 +896,26 @@ BEGIN
     v_sql := v_sql || format(' WHERE id = $%s', v_param_count);
     v_params[v_param_count] := p_location_id::text;
     
-    -- Execute update
-    EXECUTE v_sql USING VARIADIC v_params;
+    -- Execute update (compatibility: expand params up to 8 to avoid VARIADIC keyword issues)
+    IF v_param_count = 0 THEN
+        EXECUTE v_sql;
+    ELSIF v_param_count = 1 THEN
+        EXECUTE v_sql USING v_params[1];
+    ELSIF v_param_count = 2 THEN
+        EXECUTE v_sql USING v_params[1], v_params[2];
+    ELSIF v_param_count = 3 THEN
+        EXECUTE v_sql USING v_params[1], v_params[2], v_params[3];
+    ELSIF v_param_count = 4 THEN
+        EXECUTE v_sql USING v_params[1], v_params[2], v_params[3], v_params[4];
+    ELSIF v_param_count = 5 THEN
+        EXECUTE v_sql USING v_params[1], v_params[2], v_params[3], v_params[4], v_params[5];
+    ELSIF v_param_count = 6 THEN
+        EXECUTE v_sql USING v_params[1], v_params[2], v_params[3], v_params[4], v_params[5], v_params[6];
+    ELSIF v_param_count = 7 THEN
+        EXECUTE v_sql USING v_params[1], v_params[2], v_params[3], v_params[4], v_params[5], v_params[6], v_params[7];
+    ELSE
+    RAISE EXCEPTION 'Dynamic execute with % params not supported in this PostgreSQL environment (no VARIADIC support).', v_param_count;
+    END IF;
     
     -- Reset search path
     SET search_path TO public;
@@ -945,8 +1018,26 @@ BEGIN
     v_sql := v_sql || format(' WHERE id = $%s', v_param_count);
     v_params[v_param_count] := p_payment_id::text;
     
-    -- Execute update
-    EXECUTE v_sql USING VARIADIC v_params;
+    -- Execute update (compatibility: expand params up to 8 to avoid VARIADIC keyword issues)
+    IF v_param_count = 0 THEN
+        EXECUTE v_sql;
+    ELSIF v_param_count = 1 THEN
+        EXECUTE v_sql USING v_params[1];
+    ELSIF v_param_count = 2 THEN
+        EXECUTE v_sql USING v_params[1], v_params[2];
+    ELSIF v_param_count = 3 THEN
+        EXECUTE v_sql USING v_params[1], v_params[2], v_params[3];
+    ELSIF v_param_count = 4 THEN
+        EXECUTE v_sql USING v_params[1], v_params[2], v_params[3], v_params[4];
+    ELSIF v_param_count = 5 THEN
+        EXECUTE v_sql USING v_params[1], v_params[2], v_params[3], v_params[4], v_params[5];
+    ELSIF v_param_count = 6 THEN
+        EXECUTE v_sql USING v_params[1], v_params[2], v_params[3], v_params[4], v_params[5], v_params[6];
+    ELSIF v_param_count = 7 THEN
+        EXECUTE v_sql USING v_params[1], v_params[2], v_params[3], v_params[4], v_params[5], v_params[6], v_params[7];
+    ELSE
+    RAISE EXCEPTION 'Dynamic execute with % params not supported in this PostgreSQL environment (no VARIADIC support).', v_param_count;
+    END IF;
     
     -- Reset search path
     SET search_path TO public;

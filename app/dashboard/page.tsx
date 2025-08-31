@@ -1,3 +1,5 @@
+"use client"
+
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -15,7 +17,27 @@ import {
   ChevronDown,
 } from "lucide-react"
 
+import HeaderControls from '@/components/header-controls'
+import UserInfoFooter from '@/components/user-info-footer'
+import { useEffect, useState } from 'react'
 export default function Dashboard() {
+  const [counts, setCounts] = useState<{ total_drivers: number; total_employees: number } | null>(null)
+  const [tenants, setTenants] = useState<Array<any>>([])
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const res = await fetch('/api/metrics/dashboard')
+        if (!res.ok) return
+        const data = await res.json()
+        setCounts(data.counts)
+        setTenants(data.tenants || [])
+      } catch (e) {
+        // ignore; frontend will show placeholders
+      }
+    }
+    load()
+  }, [])
   return (
     <div className="min-h-screen warm-gradient relative">
       <div className="flex">
@@ -88,7 +110,7 @@ export default function Dashboard() {
             </Link>
           </div>
 
-          <div className="mt-8 text-xs text-[#333333]">Rento Admin Sunday 17 August, 2025</div>
+          <UserInfoFooter />
         </div>
 
         {/* Main Content Area */}
@@ -122,7 +144,7 @@ export default function Dashboard() {
 
           {/* Analytics Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-            <Card className="form-card">
+        <Card className="form-card">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium text-[#333333]">Total Number of Drivers</CardTitle>
                 <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
@@ -130,7 +152,7 @@ export default function Dashboard() {
                 </Button>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-[#171717]">127</div>
+          <div className="text-2xl font-bold text-[#171717]">{counts ? counts.total_drivers : '—'}</div>
                 <div className="flex items-center text-xs text-green-600 mt-1">
                   <TrendingUp className="h-3 w-3 mr-1" />
                   12%
@@ -138,7 +160,7 @@ export default function Dashboard() {
               </CardContent>
             </Card>
 
-            <Card className="form-card">
+      <Card className="form-card">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium text-[#333333]">Total Number of Employees</CardTitle>
                 <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
@@ -146,7 +168,7 @@ export default function Dashboard() {
                 </Button>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-[#171717]">250</div>
+        <div className="text-2xl font-bold text-[#171717]">{counts ? counts.total_employees : '—'}</div>
                 <div className="flex items-center text-xs text-red-600 mt-1">
                   <TrendingDown className="h-3 w-3 mr-1" />
                   8%
@@ -165,14 +187,14 @@ export default function Dashboard() {
               </Button>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-center justify-between p-3 rounded-lg bg-white/30">
+      <div className="flex items-center justify-between p-3 rounded-lg bg-white/30">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center">
                     <span className="text-xs font-medium text-orange-600">✦</span>
                   </div>
                   <div>
-                    <p className="font-medium text-[#171717]">CRED</p>
-                    <p className="text-xs text-[#333333]">Joined 5 days ago</p>
+        <p className="font-medium text-[#171717]">{tenants[0]?.company_name ?? 'CRED'}</p>
+        <p className="text-xs text-[#333333]">{tenants[0]?.created_at ? new Date(tenants[0].created_at).toLocaleDateString() : 'Joined 5 days ago'}</p>
                   </div>
                 </div>
                 <Button variant="ghost" size="sm" className="text-[#333333]">
@@ -180,14 +202,14 @@ export default function Dashboard() {
                 </Button>
               </div>
 
-              <div className="flex items-center justify-between p-3 rounded-lg bg-white/30">
+      <div className="flex items-center justify-between p-3 rounded-lg bg-white/30">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 bg-pink-100 rounded-full flex items-center justify-center">
                     <span className="text-xs font-medium text-pink-600">F</span>
                   </div>
                   <div>
-                    <p className="font-medium text-[#171717]">Flipkart</p>
-                    <p className="text-xs text-[#333333]">Joined 10 days ago</p>
+        <p className="font-medium text-[#171717]">{tenants[1]?.company_name ?? 'Flipkart'}</p>
+        <p className="text-xs text-[#333333]">{tenants[1]?.created_at ? new Date(tenants[1].created_at).toLocaleDateString() : 'Joined 10 days ago'}</p>
                   </div>
                 </div>
                 <Button variant="ghost" size="sm" className="text-[#333333]">
@@ -201,23 +223,7 @@ export default function Dashboard() {
         {/* Third Panel - Right Side */}
         <div className="w-80 p-6">
           {/* User Controls */}
-          <div className="flex items-center justify-end gap-3 mb-6">
-            <Button variant="outline" className="bg-white/60 border-[#d8d8d8]">
-              <Settings className="h-4 w-4 mr-2" />
-              Select Tenant
-              <ChevronDown className="h-4 w-4 ml-2" />
-            </Button>
-            <Button variant="ghost" size="sm">
-              <Bell className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="sm">
-              <Settings className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="sm">
-              <User className="h-4 w-4" />
-            </Button>
-          </div>
-
+          <HeaderControls className="justify-end mb-6" />
           {/* Revenue Card */}
           <Card className="mb-6 bg-gradient-to-br from-gray-700 to-gray-900 text-white overflow-hidden relative">
             <CardContent className="p-6">
