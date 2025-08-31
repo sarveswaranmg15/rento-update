@@ -9,8 +9,115 @@ import QuickActions from '@/components/quick-actions'
 import NavigationMenu from '@/components/navigation-menu'
 import Image from "next/image"
 import Link from "next/link"
+import { useEffect, useState } from 'react'
 
 export default function ProfilePage() {
+  const [profile, setProfile] = useState<any | null>(null)
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [mobile, setMobile] = useState('')
+  const [email, setEmail] = useState('')
+  const [favourites, setFavourites] = useState('')
+
+  // helper to normalize different user shapes
+  function normalize(u:any){
+    if(!u) return null
+    return {
+      id: u.id || u.user_id || null,
+      firstName: u.firstName ?? u.first_name ?? '',
+      lastName: u.lastName ?? u.last_name ?? '',
+      email: u.email ?? '',
+      role: u.role ?? u.user_role ?? 'User',
+      phone: u.phone ?? u.mobile ?? '',
+      rides_count: u.rides_count ?? u.ridesCount ?? u.rides ?? 0,
+      tenant: u.tenant ?? u.schemaName ? { schemaName: u.schemaName } : (u.tenant || null),
+      avatar_url: u.avatar_url ?? u.avatarUrl ?? ''
+    }
+  }
+
+  useEffect(()=>{
+    (async ()=>{
+      try{
+        const raw = sessionStorage.getItem('user')
+        if (raw) {
+          const parsed = JSON.parse(raw)
+          const maybeId = parsed?.id || parsed?.user_id || null
+          if (maybeId) {
+            // fetch authoritative record from DB by id
+            try {
+              // include tenant schema when available so API can query tenant-specific users table
+              const tenantSchema = parsed?.tenant?.schemaName || parsed?.schemaName || parsed?.tenant?.schema_name || null
+              const q = '/api/profile?id=' + encodeURIComponent(maybeId) + (tenantSchema ? '&schema=' + encodeURIComponent(tenantSchema) : '')
+              const res = await fetch(q)
+               if (res.ok) {
+                const data = await res.json()
+                const rawUser = data.user || null
+                if (rawUser) {
+                  const p = normalize(rawUser)
+                  if (p) {
+                    setProfile(p)
+                    setFirstName(p.firstName || '')
+                    setLastName(p.lastName || '')
+                    setMobile(p.phone || '')
+                    setEmail(p.email || '')
+                    setFavourites(rawUser.favourites || rawUser.favorite || '')
+                    try { sessionStorage.setItem('user', JSON.stringify(rawUser)) } catch(e){}
+                    return
+                  }
+                }
+              }
+            } catch(e) {
+              console.error('fetch profile by id failed', e)
+            }
+            // if fetching by id failed, fall back to using the parsed session value
+            const pLocal = normalize(parsed)
+            if (pLocal) {
+              setProfile(pLocal)
+              setFirstName(pLocal.firstName || '')
+              setLastName(pLocal.lastName || '')
+              setMobile(pLocal.phone || '')
+              setEmail(pLocal.email || '')
+              setFavourites(parsed.favourites || parsed.favorite || '')
+              return
+            }
+          } else {
+            // no id in session user - use parsed object directly
+            const p = normalize(parsed)
+            if (p) {
+              setProfile(p)
+              setFirstName(p.firstName || '')
+              setLastName(p.lastName || '')
+              setMobile(p.phone || '')
+              setEmail(p.email || '')
+              setFavourites(parsed.favourites || parsed.favorite || '')
+            }
+            return
+          }
+        }
+      }catch(e){ console.error('parse session user', e) }
+
+      // fallback to server API (no session user)
+      try{
+        const res = await fetch('/api/profile')
+        if(!res.ok) return
+        const data = await res.json()
+        const rawUser = data.user || null
+        if(rawUser){
+          const p = normalize(rawUser)
+          if (p) {
+            setProfile(p)
+            setFirstName(p.firstName || '')
+            setLastName(p.lastName || '')
+            setMobile(p.phone || '')
+            setEmail(p.email || '')
+            setFavourites(rawUser.favourites || rawUser.favorite || '')
+            try{ sessionStorage.setItem('user', JSON.stringify(rawUser)) }catch(e){}
+          }
+        }
+      }catch(e){ console.error('load profile', e) }
+    })()
+  }, [])
+
   return (
     <div className="min-h-screen warm-gradient">
       <div className="flex">
@@ -52,13 +159,13 @@ export default function ProfilePage() {
 
                 {/* User Info */}
                 <div className="text-center">
-                  <h2 className="text-2xl font-bold text-[#171717] mb-1">Khusan Akhmedov</h2>
-                  <p className="text-[#666666] mb-4">Web-designer</p>
+                  <h2 className="text-2xl font-bold text-[#171717] mb-1">{firstName + (lastName ? ' ' + lastName : '')}</h2>
+                  <p className="text-[#666666] mb-4">{profile?.role || 'User'}</p>
                 </div>
 
                 {/* Rides Count */}
                 <div className="text-center">
-                  <div className="text-3xl font-bold text-[#171717]">21</div>
+                  <div className="text-3xl font-bold text-[#171717]">{profile?.rides_count ?? '—'}</div>
                   <div className="text-[#666666] text-sm">Rides</div>
                 </div>
 
@@ -75,10 +182,17 @@ export default function ProfilePage() {
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-bold text-[#171717]">BASIC INFO</h3>
                   <div className="flex gap-3">
-                    <Button variant="outline" className="bg-white/60 border-[#d8d8d8] text-[#171717]">
+                    <Button variant="outline" className="bg-white/60 border-[#d8d8d8] text-[#171717]" onClick={()=>{
+                      sessionStorage.removeItem('user')
+                      setProfile(null)
+                    }}>
                       CANCEL
                     </Button>
-                    <Button className="bg-[#171717] hover:bg-[#333333] text-white">SAVE</Button>
+                    <Button className="bg-[#171717] hover:bg-[#333333] text-white" onClick={()=>{
+                      const out = { firstName, lastName, phone: mobile, email, favourites }
+                      try{ sessionStorage.setItem('user', JSON.stringify(out)) }catch(e){}
+                      setProfile(normalize(out))
+                    }}>SAVE</Button>
                   </div>
                 </div>
 
@@ -88,24 +202,24 @@ export default function ProfilePage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-[#171717] mb-2">FIRST NAME</label>
-                      <Input className="bg-white/60 border-[#d8d8d8]" defaultValue="Khusan" />
+                      <Input className="bg-white/60 border-[#d8d8d8]" value={firstName} onChange={(e:any)=>setFirstName(e.target.value)} />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-[#171717] mb-2">LAST NAME</label>
-                      <Input className="bg-white/60 border-[#d8d8d8]" defaultValue="Akhmedov" />
+                      <Input className="bg-white/60 border-[#d8d8d8]" value={lastName} onChange={(e:any)=>setLastName(e.target.value)} />
                     </div>
                   </div>
 
                   {/* Mobile */}
                   <div>
                     <label className="block text-sm font-medium text-[#171717] mb-2">MOBILE</label>
-                    <Input className="bg-white/60 border-[#d8d8d8]" defaultValue="+1 (555) 123-4567" />
+                    <Input className="bg-white/60 border-[#d8d8d8]" value={mobile} onChange={(e:any)=>setMobile(e.target.value)} />
                   </div>
 
                   {/* Email */}
                   <div>
                     <label className="block text-sm font-medium text-[#171717] mb-2">EMAIL</label>
-                    <Input className="bg-white/60 border-[#d8d8d8]" defaultValue="khusan.akhmedov@example.com" />
+                    <Input className="bg-white/60 border-[#d8d8d8]" value={email} onChange={(e:any)=>setEmail(e.target.value)} />
                   </div>
 
                   {/* Favourites */}
@@ -114,6 +228,8 @@ export default function ProfilePage() {
                     <Textarea
                       className="bg-white/60 border-[#d8d8d8] min-h-[120px]"
                       placeholder="Add your favourite locations, routes, or preferences..."
+                      value={favourites}
+                      onChange={(e:any)=>setFavourites(e.target.value)}
                     />
                   </div>
                 </div>
