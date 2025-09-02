@@ -9,7 +9,7 @@ import QuickActions from '@/components/quick-actions'
 import NavigationMenu from '@/components/navigation-menu'
 import Image from "next/image"
 import Link from "next/link"
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 
 export default function ProfilePage() {
   const [profile, setProfile] = useState<any | null>(null)
@@ -18,6 +18,11 @@ export default function ProfilePage() {
   const [mobile, setMobile] = useState('')
   const [email, setEmail] = useState('')
   const [favourites, setFavourites] = useState('')
+  const [schema, setSchema] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const fileRef = useRef<HTMLInputElement | null>(null)
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
 
   // helper to normalize different user shapes
   function normalize(u:any){
@@ -35,88 +40,121 @@ export default function ProfilePage() {
     }
   }
 
-  useEffect(()=>{
-    (async ()=>{
+  async function loadProfile(){
+    setLoading(true)
+    try{
+      const selected = sessionStorage.getItem('selectedTenantSchema')
+      if (selected) setSchema(selected)
+      let filled = false
       try{
         const raw = sessionStorage.getItem('user')
         if (raw) {
           const parsed = JSON.parse(raw)
           const maybeId = parsed?.id || parsed?.user_id || null
           if (maybeId) {
-            // fetch authoritative record from DB by id
-            try {
-              // include tenant schema when available so API can query tenant-specific users table
-              const tenantSchema = parsed?.tenant?.schemaName || parsed?.schemaName || parsed?.tenant?.schema_name || null
-              const q = '/api/profile?id=' + encodeURIComponent(maybeId) + (tenantSchema ? '&schema=' + encodeURIComponent(tenantSchema) : '')
-              const res = await fetch(q)
-               if (res.ok) {
-                const data = await res.json()
-                const rawUser = data.user || null
-                if (rawUser) {
-                  const p = normalize(rawUser)
-                  if (p) {
-                    setProfile(p)
-                    setFirstName(p.firstName || '')
-                    setLastName(p.lastName || '')
-                    setMobile(p.phone || '')
-                    setEmail(p.email || '')
-                    setFavourites(rawUser.favourites || rawUser.favorite || '')
-                    try { sessionStorage.setItem('user', JSON.stringify(rawUser)) } catch(e){}
-                    return
-                  }
+            const res = await fetch('/api/profile?id=' + encodeURIComponent(maybeId))
+            if (res.ok) {
+              const data = await res.json()
+              const rawUser = data.user || null
+              if (rawUser) {
+                const p = normalize(rawUser)
+                if (p) {
+                  setProfile(p)
+                  setAvatarPreview(null)
+                  setFirstName(p.firstName || '')
+                  setLastName(p.lastName || '')
+                  setMobile(p.phone || '')
+                  setEmail(p.email || '')
+                  setFavourites(rawUser.favourites || rawUser.favorite || '')
+                  try { sessionStorage.setItem('user', JSON.stringify(rawUser)) } catch{}
+                  filled = true
                 }
               }
-            } catch(e) {
-              console.error('fetch profile by id failed', e)
-            }
-            // if fetching by id failed, fall back to using the parsed session value
-            const pLocal = normalize(parsed)
-            if (pLocal) {
-              setProfile(pLocal)
-              setFirstName(pLocal.firstName || '')
-              setLastName(pLocal.lastName || '')
-              setMobile(pLocal.phone || '')
-              setEmail(pLocal.email || '')
-              setFavourites(parsed.favourites || parsed.favorite || '')
-              return
             }
           } else {
-            // no id in session user - use parsed object directly
             const p = normalize(parsed)
             if (p) {
               setProfile(p)
+              setAvatarPreview(null)
               setFirstName(p.firstName || '')
               setLastName(p.lastName || '')
               setMobile(p.phone || '')
               setEmail(p.email || '')
               setFavourites(parsed.favourites || parsed.favorite || '')
+              filled = true
             }
-            return
           }
         }
-      }catch(e){ console.error('parse session user', e) }
+      } catch {}
+      
+      if (!filled) {
+        try{
+          const res = await fetch('/api/profile')
+          if(res.ok){
+            const data = await res.json()
+            const rawUser = data.user || null
+            if (rawUser) {
+              const p = normalize(rawUser)
+              if (p) {
+                setProfile(p)
+                setAvatarPreview(null)
+                setFirstName(p.firstName || '')
+                setLastName(p.lastName || '')
+                setMobile(p.phone || '')
+                setEmail(p.email || '')
+                setFavourites(rawUser.favourites || rawUser.favorite || '')
+                try { sessionStorage.setItem('user', JSON.stringify(rawUser)) } catch{}
+              }
+            }
+          }
+        } catch {}
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
 
-      // fallback to server API (no session user)
-      try{
-        const res = await fetch('/api/profile')
-        if(!res.ok) return
-        const data = await res.json()
-        const rawUser = data.user || null
-        if(rawUser){
-          const p = normalize(rawUser)
-          if (p) {
-            setProfile(p)
-            setFirstName(p.firstName || '')
-            setLastName(p.lastName || '')
-            setMobile(p.phone || '')
-            setEmail(p.email || '')
-            setFavourites(rawUser.favourites || rawUser.favorite || '')
-            try{ sessionStorage.setItem('user', JSON.stringify(rawUser)) }catch(e){}
-          }
-        }
-      }catch(e){ console.error('load profile', e) }
-    })()
-  }, [])
+  useEffect(()=>{ loadProfile() }, [])
+
+  async function save(avatarOverride?: string){
+    if(!profile?.id) return
+    try{
+      setSaving(true)
+      const payload:any = { id: String(profile.id), first_name: firstName, last_name: lastName, phone: mobile, email }
+      const avatarUrl = avatarOverride != null ? avatarOverride : profile?.avatar_url
+      if (avatarUrl) payload.avatar_url = avatarUrl
+      if (schema) payload.schema = schema
+      const res = await fetch('/api/profile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      const data = await res.json()
+      if(!data?.ok){ console.error('save failed', data?.error) } else { await loadProfile() }
+    } finally { setSaving(false) }
+  }
+  
+  async function onAvatarSelected(e: React.ChangeEvent<HTMLInputElement>){
+    const file = e.target.files && e.target.files[0]
+    if (!file) return
+    // quick preview
+    try {
+      const previewUrl = URL.createObjectURL(file)
+      setAvatarPreview(previewUrl)
+    } catch {}
+    // upload to server
+    const fd = new FormData()
+    fd.append('file', file)
+    try{
+      const res = await fetch('/api/upload/avatar', { method: 'POST', body: fd })
+      const data = await res.json()
+      if (data?.ok && data?.url) {
+        setProfile((p:any)=> ({ ...(p||{}), avatar_url: data.url }))
+        await save(data.url)
+      }
+    } finally {
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
+
+  if (loading) return <div className="p-6">Loading...</div>
+  if (!profile) return <div className="p-6">No user found</div>
 
   return (
     <div className="min-h-screen warm-gradient">
@@ -148,13 +186,17 @@ export default function ProfilePage() {
               <div className="flex flex-col items-center space-y-6">
                 {/* Avatar */}
                 <div className="relative">
-                  <div className="w-32 h-32 bg-teal-800 rounded-full flex items-center justify-center">
-                    <svg className="w-16 h-16 text-white" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7.01 5 5 7.01 5 9.5S7.01 14 9.5 14 14 11.99 14 9.5 11.99 5 9.5 5Z" />
-                      <path d="M8.5 8.5c0 .55.45 1 1 1s1-.45 1-1-.45-1-1-1-1 .45-1 1Z" />
-                      <path d="M12.5 12.5c-.28 0-.5.22-.5.5s.22.5.5.5.5-.22.5-.5-.22-.5-.5-.5Z" />
-                    </svg>
-                  </div>
+                  {(avatarPreview || profile?.avatar_url) ? (
+                    <img src={avatarPreview || profile?.avatar_url || ''} alt="Avatar" className="w-32 h-32 rounded-full object-cover border" />
+                  ) : (
+                    <div className="w-32 h-32 bg-teal-800 rounded-full flex items-center justify-center">
+                      <svg className="w-16 h-16 text-white" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7.01 5 5 7.01 5 9.5S7.01 14 9.5 14 14 11.99 14 9.5 11.99 5 9.5 5Z" />
+                        <path d="M8.5 8.5c0 .55.45 1 1 1s1-.45 1-1-.45-1-1-1-1 .45-1 1Z" />
+                        <path d="M12.5 12.5c-.28 0-.5.22-.5.5s.22.5.5.5.5-.22.5-.5-.22-.5-.5-.5Z" />
+                      </svg>
+                    </div>
+                  )}
                 </div>
 
                 {/* User Info */}
@@ -170,7 +212,8 @@ export default function ProfilePage() {
                 </div>
 
                 {/* Upload Avatar Button */}
-                <Button variant="outline" className="bg-gray-600 border-gray-600 px-6">
+                <input ref={fileRef} type="file" accept="image/*" hidden onChange={onAvatarSelected} />
+                <Button variant="outline" className="bg-gray-600 border-gray-600 px-6" onClick={()=> fileRef.current?.click()}>
                   <Upload className="h-4 w-4 mr-2" />
                   Upload new avatar
                 </Button>
@@ -188,11 +231,7 @@ export default function ProfilePage() {
                     }}>
                       CANCEL
                     </Button>
-                    <Button className="bg-[#171717] hover:bg-[#333333] text-white" onClick={()=>{
-                      const out = { firstName, lastName, phone: mobile, email, favourites }
-                      try{ sessionStorage.setItem('user', JSON.stringify(out)) }catch(e){}
-                      setProfile(normalize(out))
-                    }}>SAVE</Button>
+                    <Button className="bg-[#171717] hover:bg-[#333333] text-white" onClick={()=>save()} disabled={saving}>{saving ? 'Saving...' : 'SAVE'}</Button>
                   </div>
                 </div>
 

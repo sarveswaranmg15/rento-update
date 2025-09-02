@@ -10,9 +10,13 @@ function isSafeIdentifier(s: any) {
 export async function GET(req: NextRequest) {
     try {
         const url = new URL(req.url)
-        const schema = url.searchParams.get('schema') || null
+        const schemaQ = url.searchParams.get('schema') || null
         const subdomain = url.searchParams.get('subdomain') || null
         const days = parseInt(url.searchParams.get('days') || '30', 10)
+
+        // cookie fallback
+        const cookieHeader = req.headers.get('cookie') || ''
+        const cookieSchema = cookieHeader.split(';').map(s => s.trim()).find(s => s.startsWith('tenant_schema='))?.split('=')[1]
 
         async function exec(schemaName: string) {
             const base = await pool.query('SELECT * FROM public.get_analytics_in_schema($1,$2)', [schemaName, isNaN(days) ? 30 : days])
@@ -21,9 +25,14 @@ export async function GET(req: NextRequest) {
             return { metrics: base.rows?.[0] || null, companies: companies.rows || [], hex: hex.rows || [] }
         }
 
-        if (schema && isSafeIdentifier(schema)) {
-            const data = await exec(schema)
-            return new Response(JSON.stringify({ ok: true, ...data, schema }), { status: 200 })
+        if (schemaQ && isSafeIdentifier(schemaQ)) {
+            const data = await exec(schemaQ)
+            return new Response(JSON.stringify({ ok: true, ...data, schema: schemaQ }), { status: 200 })
+        }
+
+        if (cookieSchema && isSafeIdentifier(cookieSchema)) {
+            const data = await exec(cookieSchema)
+            return new Response(JSON.stringify({ ok: true, ...data, schema: cookieSchema }), { status: 200 })
         }
 
         if (subdomain) {

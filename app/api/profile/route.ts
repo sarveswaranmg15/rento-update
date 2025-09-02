@@ -6,12 +6,18 @@ function isSafeIdentifier(s: any) {
     return typeof s === 'string' && /^[a-zA-Z0-9_]+$/.test(s)
 }
 
+function getCookie(req: NextRequest, name: string) {
+    const cookieHeader = req.headers.get('cookie') || ''
+    const part = cookieHeader.split(';').map(s => s.trim()).find(s => s.startsWith(name + '='))
+    return part ? decodeURIComponent(part.split('=')[1]) : null
+}
+
 export async function GET(req: NextRequest) {
     try {
         const url = new URL(req.url)
         const email = url.searchParams.get('email') || process.env.DEFAULT_USER_EMAIL || null
         const id = url.searchParams.get('id') || null
-        const schema = url.searchParams.get('schema') || null
+        const schema = url.searchParams.get('schema') || getCookie(req, 'tenant_schema') || null
         const subdomain = url.searchParams.get('subdomain') || null
 
         // Prefer tenant schema function so roles are joined
@@ -100,6 +106,28 @@ export async function GET(req: NextRequest) {
         } catch (e) { }
 
         return new Response(JSON.stringify({ ok: true, user: null }), { status: 200 })
+    } catch (err: any) {
+        console.error(err)
+        return new Response(JSON.stringify({ ok: false, error: err.message }), { status: 500 })
+    }
+}
+
+export async function POST(req: NextRequest) {
+    try {
+        const body = await req.json()
+        const id = String(body?.id || '')
+        const schema = body?.schema || getCookie(req, 'tenant_schema') || null
+        if (!id || !schema || !isSafeIdentifier(schema)) {
+            return new Response(JSON.stringify({ ok: false, error: 'missing id or schema' }), { status: 400 })
+        }
+        const first_name = body?.first_name ?? null
+        const last_name = body?.last_name ?? null
+        const phone = body?.phone ?? null
+        const email = body?.email ?? null
+        const avatar_url = body?.avatar_url ?? null
+        const avatar_image_base64 = body?.avatar_image_base64 ?? null
+        const { rows } = await pool.query('SELECT public.update_profile_in_schema($1::text,$2::text,$3::text,$4::text,$5::text,$6::text,$7::text,$8::text) AS updated', [schema, id, first_name, last_name, phone, email, avatar_url, avatar_image_base64])
+        return new Response(JSON.stringify({ ok: true, updated: rows?.[0]?.updated || 0 }), { status: 200 })
     } catch (err: any) {
         console.error(err)
         return new Response(JSON.stringify({ ok: false, error: err.message }), { status: 500 })
