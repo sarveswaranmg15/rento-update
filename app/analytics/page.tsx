@@ -9,8 +9,57 @@ import QuickActions from '@/components/quick-actions'
 import NavigationMenu from '@/components/navigation-menu'
 import Link from "next/link"
 import Image from "next/image"
+import { useEffect, useState } from 'react'
+import { Chart } from 'react-google-charts'
 
 export default function AnalyticsPage() {
+  const [metrics, setMetrics] = useState<any | null>(null)
+  const [companies, setCompanies] = useState<any[]>([])
+  const [hex, setHex] = useState<any[]>([])
+  const [schema, setSchema] = useState<string | null>(null)
+  const [tenants, setTenants] = useState<any[]>([])
+  const [tenantValue, setTenantValue] = useState<string>('all-tenants')
+
+  async function loadAnalytics(s?: string | null){
+    try{
+      const url = '/api/analytics' + (s ? ('?schema=' + encodeURIComponent(s)) : '')
+      const res = await fetch(url)
+      if(res.ok){
+        const data = await res.json()
+        setMetrics(data?.metrics || data?.data || null)
+        setCompanies(data?.companies || [])
+        setHex(data?.hex || [])
+      }
+    }catch(e){ console.error('load analytics', e) }
+  }
+
+  useEffect(()=>{
+    (async ()=>{
+      try{
+        const raw = sessionStorage.getItem('user')
+        let s: string | null = null
+        if(raw){
+          const u = JSON.parse(raw)
+          s = u?.tenant?.schemaName || u?.schemaName || u?.tenant?.schema_name || null
+        }
+        setSchema(s)
+        if (s) setTenantValue(s)
+        await loadAnalytics(s)
+      }catch(e){ console.error('init analytics', e) }
+    })()
+  },[])
+
+  useEffect(()=>{
+    (async ()=>{
+      try{
+        const res = await fetch('/api/tenants')
+        if(res.ok){
+          const data = await res.json()
+          setTenants(data?.tenants || [])
+        }
+      }catch(e){ console.error('load tenants', e) }
+    })()
+  },[])
   return (
     <div className="min-h-screen warm-gradient">
       <div className="flex">
@@ -58,17 +107,25 @@ export default function AnalyticsPage() {
               </SelectContent>
             </Select>
 
-            <Select defaultValue="all-tenants">
-              <SelectTrigger className="w-48 bg-white/60 border-[#d8d8d8]">
-                <SelectValue placeholder="Tenant" />
-              </SelectTrigger>
-              <SelectContent>
+            <Select value={tenantValue} onValueChange={async (val)=>{
+              setTenantValue(val)
+              const nextSchema = val === 'all-tenants' ? null : val
+              setSchema(nextSchema)
+              await loadAnalytics(nextSchema)
+            }}>
+               <SelectTrigger className="w-48 bg-white/60 border-[#d8d8d8]">
+                 <SelectValue placeholder="Tenant" />
+               </SelectTrigger>
+               <SelectContent>
                 <SelectItem value="all-tenants">Tenant: All</SelectItem>
-                <SelectItem value="cred">CRED</SelectItem>
-                <SelectItem value="flipkart">Flipkart</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+                {tenants.map((t:any)=> (
+                  <SelectItem key={t.schema_name} value={t.schema_name}>
+                    {t.label || t.subdomain || t.schema_name}
+                  </SelectItem>
+                ))}
+               </SelectContent>
+             </Select>
+           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
             {/* Analytics Cards - Left Side */}
@@ -87,7 +144,8 @@ export default function AnalyticsPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-[#171717]">
-                    27<span className="text-sm text-[#333333]">/80</span>
+                    {metrics?.active_users ?? 0}
+                    <span className="text-sm text-[#333333]">/{metrics?.total_users ?? 0}</span>
                   </div>
                 </CardContent>
               </Card>
@@ -105,7 +163,7 @@ export default function AnalyticsPage() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-[#171717]">3,298</div>
+                  <div className="text-2xl font-bold text-[#171717]">{metrics?.active_drivers ?? 0}</div>
                 </CardContent>
               </Card>
 
@@ -122,7 +180,9 @@ export default function AnalyticsPage() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-[#171717]">2m 34s</div>
+                  <div className="text-2xl font-bold text-[#171717]">
+                    {metrics?.avg_travel_seconds != null ? `${Math.floor(metrics.avg_travel_seconds/60)}m ${Math.round(metrics.avg_travel_seconds%60)}s` : '—'}
+                  </div>
                 </CardContent>
               </Card>
 
@@ -132,7 +192,21 @@ export default function AnalyticsPage() {
                   <CardTitle className="text-sm text-[#333333]">Last Month Revenue</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-[#171717]">64%</div>
+                  <div className="text-2xl font-bold text-[#171717]">
+                    {metrics?.last_month_revenue != null ? Intl.NumberFormat(undefined, { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(Number(metrics.last_month_revenue)) : '—'}
+                  </div>
+                  <div className="mt-2">
+                    <Chart
+                      chartType="ColumnChart"
+                      width="100%"
+                      height="80px"
+                      data={(() => {
+                        const v = Number(metrics?.last_month_revenue) || 0
+                        return [['Label','Revenue'], ['Last Month', v]]
+                      })() as any}
+                      options={{ legend: 'none', colors: ['#10b981'], chartArea: { width: '90%', height: '60%' }, hAxis: { textPosition: 'none' }, vAxis: { textPosition: 'none', viewWindow: { min: 0 } } }}
+                    />
+                  </div>
                 </CardContent>
               </Card>
 
@@ -142,17 +216,19 @@ export default function AnalyticsPage() {
                   <CardTitle className="text-sm text-[#333333]">Current</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-[#171717] mb-2">86%</div>
-                  <div className="h-8 flex items-end">
-                    <svg className="w-full h-full" viewBox="0 0 100 20">
-                      <polyline
-                        fill="none"
-                        stroke="#3b82f6"
-                        strokeWidth="2"
-                        points="0,15 20,12 40,14 60,10 80,8 100,6"
-                      />
-                    </svg>
+                  <div className="text-2xl font-bold text-[#171717] mb-2">
+                    {metrics?.current_pct != null ? `${Math.round(metrics.current_pct)}%` : '—'}
                   </div>
+                  <Chart
+                    chartType="LineChart"
+                    width="100%"
+                    height="80px"
+                    data={(() => {
+                      const rows = (metrics?.monthly_bookings || []).map((m:any)=> [String(m.month || ''), Number(m.value)||0])
+                      return [['Month','Bookings'], ...(rows.length ? rows : [['-', 0]])]
+                    })() as any}
+                    options={{ legend: 'none', chartArea: { width: '90%', height: '60%' }, hAxis: { textPosition: 'none' }, vAxis: { textPosition: 'none' }, curveType: 'function', colors: ['#3b82f6'] }}
+                  />
                 </CardContent>
               </Card>
 
@@ -162,17 +238,19 @@ export default function AnalyticsPage() {
                   <CardTitle className="text-sm text-[#333333]">Usage Increase</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-[#171717] mb-2">+34%</div>
-                  <div className="h-8 flex items-end">
-                    <svg className="w-full h-full" viewBox="0 0 100 20">
-                      <polyline
-                        fill="none"
-                        stroke="#3b82f6"
-                        strokeWidth="2"
-                        points="0,18 20,16 40,14 60,12 80,8 100,4"
-                      />
-                    </svg>
+                  <div className="text-2xl font-bold text-[#171717] mb-2">
+                    {metrics?.usage_increase_pct != null ? `${metrics.usage_increase_pct > 0 ? '+' : ''}${Math.round(metrics.usage_increase_pct)}%` : '—'}
                   </div>
+                  <Chart
+                    chartType="LineChart"
+                    width="100%"
+                    height="80px"
+                    data={(() => {
+                      const rows = (metrics?.monthly_bookings || []).map((m:any)=> [String(m.month || ''), Number(m.value)||0])
+                      return [['Month','Bookings'], ...(rows.length ? rows : [['-', 0]])]
+                    })() as any}
+                    options={{ legend: 'none', chartArea: { width: '90%', height: '60%' }, hAxis: { textPosition: 'none' }, vAxis: { textPosition: 'none' }, curveType: 'function', colors: ['#3b82f6'] }}
+                  />
                 </CardContent>
               </Card>
             </div>
@@ -180,38 +258,20 @@ export default function AnalyticsPage() {
             {/* Bar Chart - Right Side */}
             <div className="lg:col-span-1">
               <Card className="form-card h-full">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-[#333333]">Monthly Bookings</CardTitle>
+                </CardHeader>
                 <CardContent className="p-6">
-                  <div className="h-64 flex items-end justify-between gap-2">
-                    {[
-                      { month: "JAN", value: 150 },
-                      { month: "FEB", value: 180 },
-                      { month: "MAR", value: 160 },
-                      { month: "APR", value: 240 },
-                      { month: "MAY", value: 280 },
-                      { month: "JUN", value: 200 },
-                      { month: "JUL", value: 260 },
-                      { month: "AUG", value: 120 },
-                      { month: "SEP", value: 300 },
-                      { month: "OCT", value: 340 },
-                      { month: "NOV", value: 380 },
-                      { month: "DEC", value: 400 },
-                    ].map((data, index) => (
-                      <div key={data.month} className="flex flex-col items-center gap-2 flex-1">
-                        <div
-                          className="w-full bg-blue-500 rounded-t-sm min-h-[4px]"
-                          style={{ height: `${(data.value / 400) * 200}px` }}
-                        />
-                        <span className="text-xs text-[#333333] transform -rotate-45 origin-center">{data.month}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex justify-between text-xs text-[#333333] mt-4">
-                    <span>0</span>
-                    <span>100</span>
-                    <span>200</span>
-                    <span>300</span>
-                    <span>400</span>
-                  </div>
+                  <Chart
+                    chartType="ColumnChart"
+                    width="100%"
+                    height="260px"
+                    data={(() => {
+                      const rows = (metrics?.monthly_bookings || []).map((m:any)=> [String(m.month || ''), Number(m.value) || 0])
+                      return [['Month', 'Bookings'], ...(rows.length ? rows : [['-', 0]])]
+                    })() as any}
+                    options={{ title: 'Monthly Bookings', legend: { position: 'none' }, colors: ['#3b82f6'], chartArea: { width: '85%', height: '70%' } }}
+                  />
                 </CardContent>
               </Card>
             </div>
@@ -225,46 +285,16 @@ export default function AnalyticsPage() {
                 <CardTitle className="text-lg font-semibold text-[#171717]">Bookings of Companies</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="h-64 bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg flex items-center justify-center relative overflow-hidden">
-                  {/* Bubble Chart Simulation */}
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="relative w-full h-full">
-                      {/* Large bubbles */}
-                      <div className="absolute top-1/2 left-1/3 w-16 h-16 bg-blue-500 rounded-full opacity-70 flex items-center justify-center text-white text-xs font-bold">
-                        CRED
-                      </div>
-                      <div className="absolute top-1/3 right-1/4 w-12 h-12 bg-green-500 rounded-full opacity-70 flex items-center justify-center text-white text-xs font-bold">
-                        FLIP
-                      </div>
-                      <div className="absolute bottom-1/3 left-1/4 w-10 h-10 bg-purple-500 rounded-full opacity-70"></div>
-                      <div className="absolute top-1/4 left-1/2 w-8 h-8 bg-orange-500 rounded-full opacity-70"></div>
-                      <div className="absolute bottom-1/4 right-1/3 w-14 h-14 bg-teal-500 rounded-full opacity-70"></div>
-
-                      {/* Small bubbles */}
-                      <div className="absolute top-3/4 left-1/2 w-6 h-6 bg-pink-500 rounded-full opacity-60"></div>
-                      <div className="absolute top-1/6 right-1/6 w-4 h-4 bg-yellow-500 rounded-full opacity-60"></div>
-                      <div className="absolute bottom-1/6 left-1/6 w-5 h-5 bg-red-500 rounded-full opacity-60"></div>
-                    </div>
-                  </div>
-
-                  {/* Treemap on the right */}
-                  <div className="absolute right-4 top-4 w-24 h-32 grid grid-cols-3 gap-1">
-                    {Array.from({ length: 12 }).map((_, i) => (
-                      <div
-                        key={i}
-                        className={`rounded-sm ${
-                          i % 4 === 0
-                            ? "bg-blue-400"
-                            : i % 4 === 1
-                              ? "bg-purple-400"
-                              : i % 4 === 2
-                                ? "bg-green-400"
-                                : "bg-orange-400"
-                        } opacity-70`}
-                      />
-                    ))}
-                  </div>
-                </div>
+                <Chart
+                  chartType="PieChart"
+                  width="100%"
+                  height="260px"
+                  data={(() => {
+                    const rows = companies.map((c:any)=> [String(c.label || 'Unknown'), Number(c.value) || 0])
+                    return [['Company', 'Bookings'], ...(rows.length ? rows : [['No Data', 0]])]
+                  })() as any}
+                  options={{ legend: { position: 'right' }, chartArea: { width: '80%', height: '80%' } }}
+                />
               </CardContent>
             </Card>
 
@@ -275,64 +305,16 @@ export default function AnalyticsPage() {
                 <p className="text-sm text-[#333333]">#20 colors, diverging palette</p>
               </CardHeader>
               <CardContent>
-                <div className="h-64 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg flex">
-                  {/* Hexagonal heatmap simulation */}
-                  <div className="flex-1 flex items-center justify-center relative">
-                    <div className="grid grid-cols-8 gap-1 transform rotate-12">
-                      {Array.from({ length: 64 }).map((_, i) => {
-                        const colors = [
-                          "bg-purple-900",
-                          "bg-purple-800",
-                          "bg-purple-700",
-                          "bg-purple-600",
-                          "bg-blue-700",
-                          "bg-blue-600",
-                          "bg-blue-500",
-                          "bg-blue-400",
-                          "bg-teal-600",
-                          "bg-teal-500",
-                          "bg-teal-400",
-                          "bg-green-400",
-                          "bg-yellow-400",
-                          "bg-yellow-300",
-                          "bg-orange-300",
-                          "bg-orange-200",
-                        ]
-                        const colorIndex = Math.floor(Math.random() * colors.length)
-                        return (
-                          <div
-                            key={i}
-                            className={`w-3 h-3 ${colors[colorIndex]} opacity-80`}
-                            style={{
-                              clipPath: "polygon(30% 0%, 70% 0%, 100% 50%, 70% 100%, 30% 100%, 0% 50%)",
-                            }}
-                          />
-                        )
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Color Legend */}
-                  <div className="w-16 flex flex-col justify-center items-center gap-1">
-                    <div className="text-xs text-[#333333] mb-2">95</div>
-                    {[
-                      "bg-purple-900",
-                      "bg-purple-800",
-                      "bg-purple-700",
-                      "bg-blue-700",
-                      "bg-blue-600",
-                      "bg-blue-500",
-                      "bg-teal-600",
-                      "bg-teal-500",
-                      "bg-green-500",
-                      "bg-yellow-400",
-                      "bg-orange-300",
-                    ].map((color, i) => (
-                      <div key={i} className={`w-4 h-2 ${color}`} />
-                    ))}
-                    <div className="text-xs text-[#333333] mt-2">1</div>
-                  </div>
-                </div>
+                <Chart
+                  chartType="BubbleChart"
+                  width="100%"
+                  height="280px"
+                  data={(() => {
+                    const rows = hex.map((h:any, i:number)=> [String(h.bin_x + ',' + h.bin_y), Number(h.bin_x)||0, Number(h.bin_y)||0, 'B', Number(h.value)||0])
+                    return [['ID','X','Y','Group','Size'], ...(rows.length ? rows : [['0,0', 0, 0, 'B', 0]])]
+                  })() as any}
+                  options={{ colorAxis: { colors: ['#93c5fd', '#1d4ed8'] }, legend: 'none', chartArea: { width: '85%', height: '75%' } }}
+                />
               </CardContent>
             </Card>
           </div>
