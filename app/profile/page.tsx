@@ -66,6 +66,10 @@ export default function ProfilePage() {
                   setMobile(p.phone || '')
                   setEmail(p.email || '')
                   setFavourites(rawUser.favourites || rawUser.favorite || '')
+                  if (data?.schema) {
+                    setSchema(data.schema)
+                    try { sessionStorage.setItem('selectedTenantSchema', data.schema) } catch{}
+                  }
                   try { sessionStorage.setItem('user', JSON.stringify(rawUser)) } catch{}
                   filled = true
                 }
@@ -103,6 +107,10 @@ export default function ProfilePage() {
                 setMobile(p.phone || '')
                 setEmail(p.email || '')
                 setFavourites(rawUser.favourites || rawUser.favorite || '')
+                if (data?.schema) {
+                  setSchema(data.schema)
+                  try { sessionStorage.setItem('selectedTenantSchema', data.schema) } catch{}
+                }
                 try { sessionStorage.setItem('user', JSON.stringify(rawUser)) } catch{}
               }
             }
@@ -116,13 +124,14 @@ export default function ProfilePage() {
 
   useEffect(()=>{ loadProfile() }, [])
 
-  async function save(avatarOverride?: string){
+  async function save(avatarOverride?: string, avatarImageBase64?: string){
     if(!profile?.id) return
     try{
       setSaving(true)
       const payload:any = { id: String(profile.id), first_name: firstName, last_name: lastName, phone: mobile, email }
       const avatarUrl = avatarOverride != null ? avatarOverride : profile?.avatar_url
       if (avatarUrl) payload.avatar_url = avatarUrl
+      if (avatarImageBase64) payload.avatar_image_base64 = avatarImageBase64
       if (schema) payload.schema = schema
       const res = await fetch('/api/profile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       const data = await res.json()
@@ -146,7 +155,7 @@ export default function ProfilePage() {
       const data = await res.json()
       if (data?.ok && data?.url) {
         setProfile((p:any)=> ({ ...(p||{}), avatar_url: data.url }))
-        await save(data.url)
+        await save(data.url, data.image_base64)
       }
     } finally {
       if (fileRef.current) fileRef.current.value = ''

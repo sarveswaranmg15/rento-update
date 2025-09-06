@@ -18,7 +18,7 @@ BEGIN
   -- prefer public.users
   IF EXISTS(SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'users') THEN
     RETURN QUERY
-    SELECT id::uuid, first_name::varchar, last_name::varchar, phone::varchar, email::varchar, role::varchar, COALESCE(rides_count,0)::bigint, avatar_url::text
+    SELECT id::uuid, first_name::varchar, last_name::varchar, phone::varchar, email::varchar, role::varchar, COALESCE(rides_count,0)::bigint, u.profile_image::text AS avatar_url
     FROM public.users WHERE id = p_id LIMIT 1;
     RETURN;
   END IF;
@@ -61,7 +61,7 @@ BEGIN
        u.email::varchar,
        u.role_id::uuid,
        CASE WHEN u.profile_image IS NOT NULL 
-            THEN ''data:image/png;base64,'' || encode(u.profile_image, ''base64'') 
+            THEN u.profile_image
             ELSE NULL END AS avatar_url
      FROM %I.users u
      WHERE u.id::text = $1

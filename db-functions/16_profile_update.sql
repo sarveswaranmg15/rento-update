@@ -10,7 +10,7 @@ CREATE OR REPLACE FUNCTION public.update_profile_in_schema(
   p_phone text,
   p_email text,
   p_avatar_url text,                -- kept for API compatibility; not used
-  p_avatar_image_base64 text DEFAULT NULL
+  p_avatar_image_base64 text         -- new: base64 image data (data URI format optional)
 )
 RETURNS integer
 LANGUAGE plpgsql VOLATILE
@@ -31,13 +31,11 @@ BEGIN
         last_name  = COALESCE($2, last_name),
         phone      = COALESCE($3, phone),
         email      = COALESCE($4, email),
-        profile_image = CASE WHEN $6 IS NOT NULL
-                              THEN decode(regexp_replace($6, '^data:image/\\w+;base64,', ''), 'base64')
-                              ELSE profile_image END,
+        profile_image = $5,
         updated_at = now()
-      WHERE id::text = $5
+      WHERE id::text = $6
     $SQL$, p_schema)
-    USING p_first_name, p_last_name, p_phone, p_email, p_user_id, p_avatar_image_base64;
+    USING p_first_name, p_last_name, p_phone, p_email, p_avatar_image_base64, p_user_id;
 
     GET DIAGNOSTICS v_rows = ROW_COUNT;
     RETURN v_rows;

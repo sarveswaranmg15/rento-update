@@ -25,7 +25,10 @@ export async function POST(req: NextRequest) {
         await fs.writeFile(filepath, buffer)
 
         const url = `/uploads/avatars/${filename}`
-        return new Response(JSON.stringify({ ok: true, url }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+        // Include a base64 data URL so the client can persist the image into DB if desired
+        const mime = (file as any).type || 'image/png'
+        const image_base64 = `data:${mime};base64,${buffer.toString('base64')}`
+        return new Response(JSON.stringify({ ok: true, url, image_base64 }), { status: 200, headers: { 'Content-Type': 'application/json' } })
     } catch (e: any) {
         console.error('avatar upload error', e)
         return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500 })

@@ -25,7 +25,9 @@ export async function GET(req: NextRequest) {
             try {
                 const funcRes = await pool.query('SELECT * FROM public.get_profile_by_id_in_schema($1,$2)', [schema, id])
                 if (funcRes.rows && funcRes.rows.length > 0) {
-                    return new Response(JSON.stringify({ ok: true, user: funcRes.rows[0] }), { status: 200 })
+                    const u = funcRes.rows[0]
+                    if (u && u.rides_count == null) u.rides_count = 0
+                    return new Response(JSON.stringify({ ok: true, user: u, schema }), { status: 200 })
                 }
             } catch (e) {
                 console.error('get_profile_by_id_in_schema error', { schema, id, e })
@@ -42,7 +44,9 @@ export async function GET(req: NextRequest) {
                     if (resolved && isSafeIdentifier(resolved)) {
                         const sres = await pool.query('SELECT * FROM public.get_profile_by_id_in_schema($1,$2)', [resolved, id])
                         if (sres.rows && sres.rows.length > 0) {
-                            return new Response(JSON.stringify({ ok: true, user: sres.rows[0] }), { status: 200 })
+                            const u = sres.rows[0]
+                            if (u && u.rides_count == null) u.rides_count = 0
+                            return new Response(JSON.stringify({ ok: true, user: u, schema: resolved }), { status: 200 })
                         }
                     }
                 } catch (e) {
@@ -59,7 +63,9 @@ export async function GET(req: NextRequest) {
                     try {
                         const tres = await pool.query('SELECT * FROM public.get_profile_by_id_in_schema($1,$2)', [sname, id])
                         if (tres.rows && tres.rows.length > 0) {
-                            return new Response(JSON.stringify({ ok: true, user: tres.rows[0], schema: sname }), { status: 200 })
+                            const u = tres.rows[0]
+                            if (u && u.rides_count == null) u.rides_count = 0
+                            return new Response(JSON.stringify({ ok: true, user: u, schema: sname }), { status: 200 })
                         }
                     } catch (e) {
                         // ignore and continue
@@ -116,8 +122,25 @@ export async function POST(req: NextRequest) {
     try {
         const body = await req.json()
         const id = String(body?.id || '')
-        const schema = body?.schema || getCookie(req, 'tenant_schema') || null
-        if (!id || !schema || !isSafeIdentifier(schema)) {
+        let schema = body?.schema || getCookie(req, 'tenant_schema') || null
+        if (!id) {
+            return new Response(JSON.stringify({ ok: false, error: 'missing id' }), { status: 400 })
+        }
+        // If schema is missing, try to resolve by scanning active tenants to find the user
+        if (!schema) {
+            try {
+                const tenants = await pool.query("SELECT schema_name FROM public.tenants WHERE status = 'active'")
+                for (const row of tenants.rows || []) {
+                    const sname = row.schema_name
+                    if (!sname || !isSafeIdentifier(sname)) continue
+                    try {
+                        const exists = await pool.query(`SELECT 1 FROM ${sname}.users WHERE id::text = $1 LIMIT 1`, [id])
+                        if (exists.rows && exists.rows.length > 0) { schema = sname; break }
+                    } catch { /* ignore */ }
+                }
+            } catch { /* ignore */ }
+        }
+        if (!schema || !isSafeIdentifier(schema)) {
             return new Response(JSON.stringify({ ok: false, error: 'missing id or schema' }), { status: 400 })
         }
         const first_name = body?.first_name ?? null

@@ -34,7 +34,7 @@ BEGIN
             home_address text,
             home_latitude numeric(10,8),
             home_longitude numeric(11,8),
-            profile_image bytea,
+            profile_image text,
             is_active boolean DEFAULT true,
             last_login timestamp,
             created_at timestamp DEFAULT CURRENT_TIMESTAMP,
