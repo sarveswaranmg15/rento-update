@@ -4,23 +4,18 @@
 -- ==================================
 
 -- Returns total drivers and total employees for a tenant schema
+DROP FUNCTION IF EXISTS public.get_dashboard_counts;
 CREATE OR REPLACE FUNCTION get_dashboard_counts(p_schema_name text)
 RETURNS TABLE(
   total_drivers bigint,
   total_employees bigint
 ) AS $$
 BEGIN
-  -- Set search path to tenant schema for tenant-scoped tables
-  EXECUTE format('SET search_path TO %I, public', p_schema_name);
-
   RETURN QUERY EXECUTE format('
     SELECT
       (SELECT COUNT(*) FROM %I.drivers) AS total_drivers,
       (SELECT COUNT(*) FROM %I.users) AS total_employees
   ', p_schema_name, p_schema_name);
-
-  -- Reset search path
-  SET search_path TO public;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -35,18 +30,12 @@ RETURNS TABLE(
   active_drivers bigint
 ) AS $$
 BEGIN
-  -- Set search path to tenant schema
-  EXECUTE format('SET search_path TO %I, public', p_schema_name);
-
   RETURN QUERY EXECUTE format('
     SELECT
       (SELECT COUNT(*) FROM %I.drivers) AS total_drivers,
       (SELECT COUNT(*) FROM %I.users u JOIN public.roles r ON u.role_id = r.id WHERE r.name = ''fleet_manager'') AS total_fleet_managers,
       (SELECT COUNT(*) FROM %I.drivers WHERE status = ''active'') AS active_drivers
   ', p_schema_name, p_schema_name, p_schema_name);
-
-  -- Reset search path
-  SET search_path TO public;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -61,16 +50,10 @@ RETURNS TABLE(
   payment_description text
 ) AS $$
 BEGIN
-  -- Set search path to tenant schema
-  EXECUTE format('SET search_path TO %I, public', p_schema_name);
-
   RETURN QUERY EXECUTE format(
     'SELECT payment_number, amount, payment_method, payment_date, COALESCE(payment_status, '''') as payment_status, payment_description FROM %I.payments WHERE payment_date IS NOT NULL ORDER BY payment_date DESC LIMIT %s',
     p_schema_name, p_limit
   );
-
-  -- Reset search path
-  SET search_path TO public;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -90,9 +73,6 @@ DECLARE
   v_number varchar := NULL;
   v_date timestamp := NULL;
 BEGIN
-  -- Set search path to tenant schema
-  EXECUTE format('SET search_path TO %I, public', p_schema_name);
-
   -- Total revenue (captured/completed payments) minus refunds
   EXECUTE format(
     'SELECT COALESCE(SUM((amount - COALESCE(refund_amount,0))::numeric),0) FROM %I.payments WHERE COALESCE(payment_status,'''') IN (''captured'',''completed'')',
@@ -110,9 +90,6 @@ BEGIN
     'SELECT payment_method, payment_number, payment_date FROM %I.payments WHERE COALESCE(payment_status,'''') IN (''captured'',''completed'') ORDER BY payment_date DESC LIMIT 1',
     p_schema_name
   ) INTO v_method, v_number, v_date;
-
-  -- Reset search path
-  SET search_path TO public;
 
   total_revenue := v_total;
   recent_revenue := v_recent;
@@ -142,6 +119,24 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Schema-scoped variant: return tenant metadata only for the provided schema
+CREATE OR REPLACE FUNCTION get_tenants_list_for_schema(p_schema_name text)
+RETURNS TABLE(
+  id uuid,
+  company_name varchar,
+  subdomain varchar,
+  schema_name varchar,
+  created_at timestamp
+) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT t.id, t.company_name, t.subdomain, t.schema_name, t.created_at
+  FROM public.tenants t
+  WHERE t.status = 'active' AND t.schema_name = p_schema_name
+  ORDER BY t.created_at DESC;
+END;
+$$ LANGUAGE plpgsql;
+
 -- Returns percent change for drivers and employees comparing last `p_days` days to the previous `p_days` window
 CREATE OR REPLACE FUNCTION get_dashboard_changes(p_schema_name text, p_days integer DEFAULT 7)
 RETURNS TABLE(
@@ -154,9 +149,6 @@ DECLARE
   v_recent_employees bigint;
   v_prev_employees bigint;
 BEGIN
-  -- Set search path to tenant schema
-  EXECUTE format('SET search_path TO %I, public', p_schema_name);
-
   -- Count drivers created in the last p_days
   EXECUTE format('SELECT COUNT(*) FROM %I.drivers WHERE created_at >= CURRENT_DATE - INTERVAL ''%s days''', p_schema_name, p_days)
   INTO v_recent_drivers;
@@ -185,9 +177,6 @@ BEGIN
   ELSE
     employees_change := ((v_recent_employees::numeric - v_prev_employees::numeric) / v_prev_employees::numeric) * 100;
   END IF;
-
-  -- Reset search path
-  SET search_path TO public;
 
   RETURN NEXT;
 END;

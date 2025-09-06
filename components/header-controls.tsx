@@ -4,11 +4,13 @@ import { useState, useRef, useEffect } from 'react'
 import { Button } from "@/components/ui/button"
 import { Bell, Settings, User, ChevronDown } from "lucide-react"
 import Link from 'next/link'
-import { Chart } from 'react-google-charts'
+// removed unused Chart import to avoid any potential SSR/CSR divergence
 
 export default function HeaderControls({ className = "" }: { className?: string }) {
+  // Note: Do NOT derive initial auth from cookies during first render to avoid hydration mismatch
   const [open, setOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
+  const [mounted, setMounted] = useState(false)
 
   const [tenantsOpen, setTenantsOpen] = useState(false)
   const tenantRef = useRef<HTMLDivElement | null>(null)
@@ -22,8 +24,13 @@ export default function HeaderControls({ className = "" }: { className?: string 
   const settingsRef = useRef<HTMLDivElement | null>(null)
   const [settingKey, setSettingKey] = useState('dashboard.theme')
   const [settingVal, setSettingVal] = useState('light')
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false)
+  const [authChecked, setAuthChecked] = useState(false)
 
   useEffect(() => {
+  // flip to mounted after first paint to render real UI
+  setMounted(true)
+
     function onDocClick(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setOpen(false)
@@ -39,10 +46,32 @@ export default function HeaderControls({ className = "" }: { className?: string 
   }, [])
 
   useEffect(() => {
+    // Determine super admin from sessionStorage or (fallback) cookie on client after mount
+    let sup = false
+    let hasUser = false
+    try {
+      const raw = sessionStorage.getItem('user')
+      if (raw) {
+        hasUser = true
+        const u = JSON.parse(raw)
+        if (u?.role === 'super_admin') sup = true
+      }
+    } catch {}
+    // Only consider cookie fallback when there is no user session persisted
+    if (!sup && !hasUser) {
+      try {
+        const cookieStr = typeof document !== 'undefined' ? document.cookie : ''
+        sup = /(?:^|; )super_admin=1(?:;|$)/.test(cookieStr)
+      } catch {}
+    }
+    setIsSuperAdmin(sup)
+    setAuthChecked(true)
+    if (!sup) return
+
     // initialize current tenant label from sessionStorage
     const label = sessionStorage.getItem('selectedTenantLabel')
     if (label) setTenantLabel(label)
-    // fetch tenants
+    // fetch tenants only for super admin
     ;(async ()=>{
       try{
         const res = await fetch('/api/tenants')
@@ -83,6 +112,7 @@ export default function HeaderControls({ className = "" }: { className?: string 
     fetch(`/api/tenant/select?schema=${schema ? encodeURIComponent(schema) : ''}`).catch(()=>{})
     // notify app
     try { (window as any).dispatchEvent(new CustomEvent('tenant:changed', { detail: { schema, label } })) } catch {}
+    window.location.reload();
   }
 
   async function saveSetting(){
@@ -92,26 +122,38 @@ export default function HeaderControls({ className = "" }: { className?: string 
     }catch{}
   }
 
+  // Stable placeholder to ensure SSR and first client render are identical
+  if (!mounted) {
+    return (
+      <div className={`flex items-center gap-3 ${className}`}>
+        <div className="h-9 w-36 bg-gray-100 rounded-md" />
+        <div className="h-9 w-9 bg-gray-100 rounded-md" />
+        <div className="h-9 w-9 bg-gray-100 rounded-md" />
+      </div>
+    )
+  }
+
   return (
     <div className={`flex items-center gap-3 ${className}`}>
-      {/* Tenant Selector */}
-      <div className="relative" ref={tenantRef}>
-        <Button variant="outline" className="bg-white/60 border-[#d8d8d8]" onClick={() => setTenantsOpen(o => !o)}>
-          <Settings className="h-4 w-4 mr-2" />
-          {tenantLabel}
-          <ChevronDown className="h-4 w-4 ml-2" />
-        </Button>
-        {tenantsOpen && (
-          <div className="absolute right-0 mt-2 w-56 bg-white rounded shadow-lg border border-[#e5e7eb] z-50 max-h-80 overflow-auto">
-            <button className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100" onClick={() => selectTenant(null, 'All Tenants')}>All Tenants</button>
-            {tenants.map((t:any)=> (
-              <button key={t.schema_name} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100" onClick={() => selectTenant(t.schema_name, t.label || t.subdomain || t.schema_name)}>
-                {t.label || t.subdomain || t.schema_name}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      {/* Tenant Selector - visible only to super admin */}
+  {authChecked && isSuperAdmin && (
+        <div className="relative" ref={tenantRef}>
+          <Button variant="outline" className="bg-white/60 border-[#d8d8d8]" onClick={() => setTenantsOpen(o => !o)}>
+            <Settings className="h-4 w-4 mr-2" />
+            {tenantLabel}
+            <ChevronDown className="h-4 w-4 ml-2" />
+          </Button>
+          {tenantsOpen && (
+            <div className="absolute right-0 mt-2 w-56 bg-white rounded shadow-lg border border-[#e5e7eb] z-50 max-h-80 overflow-auto">
+              {tenants.map((t:any)=> (
+                <button key={t.schema_name} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100" onClick={() => selectTenant(t.schema_name, t.label || t.subdomain || t.schema_name)}>
+                  {t.label || t.subdomain || t.schema_name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Notifications */}
       <div className="relative" ref={notifRef}>

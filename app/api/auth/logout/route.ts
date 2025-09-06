@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 export const runtime = 'nodejs'
 
 export async function GET(req: NextRequest) {
-    const html = `<!doctype html>
+  const html = `<!doctype html>
 <html>
   <head>
     <meta charset="utf-8" />
@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
           try { sessionStorage.clear(); } catch(e) {}
 
           // list of common auth cookie names to clear
-          const names = ['session','token','next-auth.session-token','next-auth.callback-url','sb:token','rento_session'];
+          const names = ['session','token','next-auth.session-token','next-auth.callback-url','sb:token','rento_session','tenant_schema','super_admin'];
           const path = ';path=/';
           const expires = ';expires=Thu, 01 Jan 1970 00:00:00 GMT';
           names.forEach(n => {
@@ -34,5 +34,5 @@ export async function GET(req: NextRequest) {
   </body>
 </html>`
 
-    return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } })
+  return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } })
 }

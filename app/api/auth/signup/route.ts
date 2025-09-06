@@ -8,16 +8,18 @@ export const runtime = 'nodejs'
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { email, password, firstName, lastName, phone, employeeId, subdomain, role = 'employee' } = body || {}
+    const { email, password, firstName, lastName, phone, employeeId, subdomain, schema: schemaFromBody, role = 'employee' } = body || {}
 
     if (!email || !password) {
       return NextResponse.json({ error: 'Email and password are required' }, { status: 400 })
     }
 
-    const schema = await getTenantSchema(subdomain)
+    // Prefer explicit schema from body; fallback to subdomain resolution
+    let schema = typeof schemaFromBody === 'string' && /^[a-z0-9_]+$/.test(schemaFromBody) ? schemaFromBody : null
     if (!schema) {
-      return NextResponse.json({ error: 'Invalid tenant' }, { status: 400 })
+      schema = await getTenantSchema(subdomain)
     }
+    if (!schema) return NextResponse.json({ error: 'Invalid tenant' }, { status: 400 })
 
     // Check if user exists
     const existing = await pool.query(`SELECT 1 FROM ${schema}.users WHERE email = $1`, [email])

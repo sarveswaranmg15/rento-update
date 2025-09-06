@@ -40,24 +40,56 @@ export default function Dashboard() {
 
   const [trendsData, setTrendsData] = useState<any[]>([])
   const [activeTab, setActiveTab] = useState<'history' | 'payment'>('history')
+  const [showAddTenant, setShowAddTenant] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [tCompany, setTCompany] = useState('')
+  const [tSubdomain, setTSubdomain] = useState('')
+  const [tEmail, setTEmail] = useState('')
+  const [tCode, setTCode] = useState('')
+  const [tError, setTError] = useState<string | null>(null)
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const res = await fetch('/api/metrics/dashboard')
-        if (!res.ok) return
-        const data = await res.json()
-        setCounts(data.counts)
-        setTenants(data.tenants || [])
-  setChanges(data.changes || null)
-  setRevenue(data.revenue || null)
-  setPayments(data.payments || [])
-      } catch (e) {
-        // ignore; frontend will show placeholders
-      }
+  async function loadDashboard() {
+    try {
+      const res = await fetch('/api/metrics/dashboard')
+      if (!res.ok) return
+      const data = await res.json()
+      setCounts(data.counts)
+      setTenants(data.tenants || [])
+      setChanges(data.changes || null)
+      setRevenue(data.revenue || null)
+      setPayments(data.payments || [])
+    } catch {}
+  }
+
+  useEffect(() => { loadDashboard() }, [])
+
+  async function submitTenant(e?: React.FormEvent) {
+    if (e) e.preventDefault()
+    setTError(null)
+    if (!tCompany || !tSubdomain || !tEmail) {
+      setTError('Company, Subdomain, and Email are required')
+      return
     }
-    load()
-  }, [])
+    setCreating(true)
+    try {
+      const payload:any = { company_name: tCompany.trim(), subdomain: tSubdomain.trim().toLowerCase(), contact_email: tEmail.trim() }
+      if (tCode) payload.company_code = tCode.trim()
+      const res = await fetch('/api/tenants', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      const data = await res.json()
+      if (!res.ok || !data?.ok) {
+        setTError(data?.error || 'Failed to create tenant')
+        return
+      }
+      // success: clear form, hide panel, refresh
+      setTCompany(''); setTSubdomain(''); setTEmail(''); setTCode('')
+      setShowAddTenant(false)
+      await loadDashboard()
+    } catch (err:any) {
+      setTError(err?.message || 'Failed to create tenant')
+    } finally {
+      setCreating(false)
+    }
+  }
 
   // derive a simple payments summary for Payment tab
   const paymentSummary = payments.reduce((acc: Record<string, { count: number; total: number }>, p: any) => {
@@ -201,12 +233,39 @@ export default function Dashboard() {
           <Card className="form-card">
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-lg font-semibold text-[#171717]">Tenant History</CardTitle>
-              <Button variant="ghost" size="sm">
+              <Button variant="ghost" size="sm" onClick={() => setShowAddTenant((s)=>!s)}>
                 <Plus className="h-4 w-4 mr-1" />
                 Add
               </Button>
             </CardHeader>
             <CardContent className="space-y-4">
+              {showAddTenant && (
+                <form onSubmit={submitTenant} className="p-3 rounded-lg bg-white/50 space-y-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-[#333] mb-1">Company Name</label>
+                      <input className="w-full px-3 py-2 border rounded" value={tCompany} onChange={(e)=>setTCompany(e.target.value)} placeholder="Acme Corp" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-[#333] mb-1">Subdomain</label>
+                      <input className="w-full px-3 py-2 border rounded" value={tSubdomain} onChange={(e)=>setTSubdomain(e.target.value)} placeholder="acme" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-[#333] mb-1">Contact Email</label>
+                      <input type="email" className="w-full px-3 py-2 border rounded" value={tEmail} onChange={(e)=>setTEmail(e.target.value)} placeholder="admin@acme.com" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-[#333] mb-1">Company Code (optional)</label>
+                      <input className="w-full px-3 py-2 border rounded" value={tCode} onChange={(e)=>setTCode(e.target.value)} placeholder="ACME" />
+                    </div>
+                  </div>
+                  {tError && <div className="text-sm text-red-600">{tError}</div>}
+                  <div className="flex gap-2">
+                    <Button type="button" variant="outline" className="bg-white/60 border-[#d8d8d8] text-[#171717]" onClick={()=>{ setShowAddTenant(false); setTError(null) }}>Cancel</Button>
+                    <Button type="submit" className="bg-[#171717] hover:bg-[#333333] text-white" disabled={creating}>{creating ? 'Creating…' : 'Create Tenant'}</Button>
+                  </div>
+                </form>
+              )}
               {tenants && tenants.length > 0 ? (
                 tenants.slice(0, 5).map((t: any, i: number) => (
                   <div key={t.id ?? i} className="flex items-center justify-between p-3 rounded-lg bg-white/30">

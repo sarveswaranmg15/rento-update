@@ -25,8 +25,12 @@ import NavigationMenu from '@/components/navigation-menu'
 import QuickActions from '@/components/quick-actions'
 import Image from "next/image"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 
 export default function AdminPanelPage() {
+  const router = useRouter()
+  const [authChecked, setAuthChecked] = useState(false)
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false)
   const [metrics, setMetrics] = useState<{ total_companies:number, total_hr:number, total_fleets:number, total_companies_change?:number, total_hr_change?:number, total_fleets_change?:number } | null>(null)
   const [members, setMembers] = useState<Array<any>>([])
   const [tenantName, setTenantName] = useState<string | null>(null)
@@ -40,7 +44,28 @@ export default function AdminPanelPage() {
   const [modalLimit, setModalLimit] = useState<number>(25)
   const [offset, setOffset] = useState<number>(0)
 
+  // Authorization guard: only super admins can access
+  useEffect(() => {
+    let superAdmin = false
+    try {
+      const raw = sessionStorage.getItem('user')
+      if (raw) {
+        const u = JSON.parse(raw)
+        if (u?.role === 'super_admin') superAdmin = true
+      }
+    } catch {}
+    if (!superAdmin && typeof document !== 'undefined') {
+      try { if (document.cookie.split('; ').includes('super_admin=1')) superAdmin = true } catch {}
+    }
+    setIsSuperAdmin(superAdmin)
+    setAuthChecked(true)
+    if (!superAdmin) {
+      router.replace('/admin')
+    }
+  }, [router])
+
   useEffect(()=>{
+    if (!isSuperAdmin) return
     async function load() {
       try {
         const res = await fetch('/api/admin/metrics')
@@ -54,7 +79,7 @@ export default function AdminPanelPage() {
     load()
     // loadMembers is defined in component scope
     loadMembers()
-  }, [])
+  }, [isSuperAdmin])
 
   // loadMembers is defined in component scope so it can be called from UI handlers
   async function loadMembers(params?: { search?: string, is_active?: string }){
@@ -141,6 +166,11 @@ export default function AdminPanelPage() {
   }
 
   return (
+    !authChecked || !isSuperAdmin ? (
+      <div className="min-h-screen warm-gradient flex items-center justify-center p-8">
+        <div className="text-[#171717]">Loading…</div>
+      </div>
+    ) : (
     <div className="min-h-screen warm-gradient">
       <div className="flex">
         {/* Left Sidebar */}
@@ -365,5 +395,6 @@ export default function AdminPanelPage() {
         </div>
       </div>
     </div>
+  )
   )
 }

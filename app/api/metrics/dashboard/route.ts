@@ -7,15 +7,31 @@ export const runtime = 'nodejs'
 export async function GET(req: NextRequest) {
     try {
         const url = new URL(req.url)
+        const qsSchema = url.searchParams.get('schema')
         const subdomain = url.searchParams.get('subdomain') || process.env.NEXT_PUBLIC_TENANT || ''
-        const schema = await getTenantSchema(subdomain)
+
+        function getCookie(name: string) {
+            const cookieHeader = req.headers.get('cookie') || ''
+            const part = cookieHeader.split(';').map(s => s.trim()).find(s => s.startsWith(name + '='))
+            return part ? decodeURIComponent(part.split('=')[1]) : null
+        }
+        const cookieSchema = getCookie('tenant_schema')
+
+        function isSafeSchema(s: any) {
+            return typeof s === 'string' && /^tenant_[a-z0-9_]+$/.test(s)
+        }
+
+        let schema: string | null = null
+        if (qsSchema && isSafeSchema(qsSchema)) schema = qsSchema
+        else if (cookieSchema && isSafeSchema(cookieSchema)) schema = cookieSchema
+        else schema = await getTenantSchema(subdomain)
         if (!schema) {
             return NextResponse.json({ error: 'tenant not found' }, { status: 400 })
         }
 
         // get counts
         const countsRes = await pool.query(`SELECT * FROM public.get_dashboard_counts($1)`, [schema])
-        const tenantsRes = await pool.query(`SELECT * FROM public.get_tenants_list()`)
+        const tenantsRes = await pool.query(`SELECT * FROM public.get_tenants_list_for_schema($1)`, [schema])
 
         const counts = countsRes.rows?.[0] ?? { total_drivers: 0, total_employees: 0 }
         const tenants = tenantsRes.rows ?? []

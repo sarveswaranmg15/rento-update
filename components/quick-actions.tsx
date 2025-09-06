@@ -12,7 +12,7 @@ type Props = {
 
 export default function QuickActions({ primaryAction = '/book-ride', showSchedule = true, showPool = true }: Props) {
   return (
-    <div className="space-y-3 shadow">
+    <div className="space-y-3">
       <h3 className="text-sm font-medium text-[#333333] mb-3">Quick Actions</h3>
       <Link href={primaryAction}>
         <Button className="w-full bg-[#ffc641] hover:bg-[#ffb800] text-[#171717] font-medium px-3.5 mx-0">

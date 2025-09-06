@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { useEffect, useState } from 'react'
 
 type Props = {
   active?:
@@ -20,6 +21,30 @@ type Props = {
 }
 
 export default function NavigationMenu({ active }: Props) {
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false)
+  const [authChecked, setAuthChecked] = useState(false)
+
+  useEffect(() => {
+    let sup = false
+    let hasUser = false
+    try {
+      const raw = sessionStorage.getItem('user')
+      if (raw) {
+        hasUser = true
+        const u = JSON.parse(raw)
+        if (u?.role === 'super_admin') sup = true
+      }
+    } catch {}
+    if (!sup && !hasUser) {
+      try {
+        const cookieStr = typeof document !== 'undefined' ? document.cookie : ''
+        sup = /(?:^|; )super_admin=1(?:;|$)/.test(cookieStr)
+      } catch {}
+    }
+    setIsSuperAdmin(sup)
+    setAuthChecked(true)
+  }, [])
+
   return (
     <nav className="space-y-1 mb-8">
       <Link href="/dashboard">
@@ -47,14 +72,16 @@ export default function NavigationMenu({ active }: Props) {
           Analytics
         </Button>
       </Link>
-      <Link href="/admin-panel">
-        <Button
-          variant={active === 'admin' || active === 'admin-panel' ? 'secondary' : 'ghost'}
-          className={active === 'admin' || active === 'admin-panel' ? 'w-full justify-start bg-white/60 text-[#171717] hover:bg-white/80 rounded-full' : 'w-full justify-start text-[#171717] hover:bg-white/20'}
-        >
-          Admin Panel
-        </Button>
-      </Link>
+      {authChecked && isSuperAdmin && (
+        <Link href="/admin-panel">
+          <Button
+            variant={active === 'admin' || active === 'admin-panel' ? 'secondary' : 'ghost'}
+            className={active === 'admin' || active === 'admin-panel' ? 'w-full justify-start bg-white/60 text-[#171717] hover:bg-white/80 rounded-full' : 'w-full justify-start text-[#171717] hover:bg-white/20'}
+          >
+            Admin Panel
+          </Button>
+        </Link>
+      )}
       <Link href="/my-bookings">
         <Button variant={active === 'my-bookings' ? 'secondary' : 'ghost'} className={active === 'my-bookings' ? 'w-full justify-start bg-white/60 text-[#171717] hover:bg-white/80 rounded-full' : 'w-full justify-start text-[#171717] hover:bg-white/20'}>
           My Bookings

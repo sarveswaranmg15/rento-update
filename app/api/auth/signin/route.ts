@@ -8,15 +8,14 @@ export const runtime = 'nodejs'
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { email, password, subdomain } = body || {}
+    const { email, password, subdomain, schema: schemaFromBody } = body || {}
     if (!email || !password) {
       return NextResponse.json({ error: 'Email and password are required' }, { status: 400 })
     }
 
-    const schema = await getTenantSchema(subdomain)
-    if (!schema) {
-      return NextResponse.json({ error: 'Invalid tenant' }, { status: 400 })
-    }
+    let schema = typeof schemaFromBody === 'string' && /^[a-z0-9_]+$/.test(schemaFromBody) ? schemaFromBody : null
+    if (!schema) schema = await getTenantSchema(subdomain)
+    if (!schema) return NextResponse.json({ error: 'Invalid tenant' }, { status: 400 })
 
     const { rows } = await pool.query(
       `SELECT id, first_name, last_name, email, password_hash FROM ${schema}.users WHERE email = $1 AND is_active = true`,
@@ -61,7 +60,14 @@ export async function POST(req: NextRequest) {
         }
         : { id: user.id, firstName: user.first_name, lastName: user.last_name, email: user.email }
 
-      return NextResponse.json({ ok: true, token, user: userContext })
+      const res = NextResponse.json({ ok: true, token, user: userContext })
+      // set tenant schema cookie for downstream APIs/UI and ensure super_admin cookie is cleared
+      try {
+        res.cookies.set('tenant_schema', schema, { httpOnly: false, sameSite: 'lax', path: '/' })
+        // clear any stale super_admin flag from previous sessions
+        res.cookies.set('super_admin', '', { httpOnly: false, sameSite: 'lax', path: '/', expires: new Date(0) })
+      } catch { }
+      return res
     } catch (ctxErr: any) {
       console.error('user context fetch error', ctxErr)
       // Return basic user info if context fetch fails

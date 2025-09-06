@@ -4,9 +4,10 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import Image from "next/image"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 
 export default function SignUpPage() {
@@ -15,8 +16,31 @@ export default function SignUpPage() {
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
+  const [tenants, setTenants] = useState<Array<{ id: string; subdomain: string; schema_name: string; label: string }>>([])
+  const [schema, setSchema] = useState<string>("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let abort = false
+    async function loadTenants() {
+      try {
+        const res = await fetch('/api/tenants', { cache: 'no-store' })
+        const data = await res.json()
+        if (!abort && data?.ok) {
+          setTenants(data.tenants || [])
+          // Preselect from env or first tenant
+          const envSchema = (process.env.NEXT_PUBLIC_TENANT as string | undefined) || ''
+          const pre = envSchema && (data.tenants || []).find((t: any) => t.schema_name === envSchema)
+          setSchema(pre?.schema_name || (data.tenants?.[0]?.schema_name ?? ""))
+        }
+      } catch (e) {
+        // ignore fetch errors here
+      }
+    }
+    loadTenants()
+    return () => { abort = true }
+  }, [])
 
   async function onSubmit() {
     setError(null)
@@ -28,12 +52,16 @@ export default function SignUpPage() {
       setError("Passwords do not match")
       return
     }
+    if (!schema) {
+      setError("Please select a company")
+      return
+    }
     setLoading(true)
     try {
       const res = await fetch("/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, firstName: username, lastName: "", subdomain: process.env.NEXT_PUBLIC_TENANT || undefined })
+        body: JSON.stringify({ email, password, firstName: username, lastName: "", schema })
       })
       const data = await res.json()
       if (!res.ok) {
@@ -62,6 +90,23 @@ export default function SignUpPage() {
           <CardTitle className="text-xl text-[#171717]">What's Your email?</CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
+          <div className="space-y-2">
+            <Label htmlFor="tenant" className="text-sm font-medium text-[#171717]">
+              Company
+            </Label>
+            <Select value={schema} onValueChange={setSchema}>
+                <SelectTrigger id="tenant" className="w-full min-w-0 bg-white/80 border-[#d8d8d8] rounded-xl h-12 text-[#171717] placeholder:text-[#666666]">
+                <SelectValue placeholder="Choose your company" />
+                </SelectTrigger>
+              <SelectContent>
+                {tenants.map((t) => (
+                  <SelectItem key={t.schema_name} value={t.schema_name}>
+                    {t.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="space-y-2">
             <Label htmlFor="email" className="text-sm font-medium text-[#171717]">
               Email Address
