@@ -13,6 +13,7 @@ import FareSummary from '@/components/book-ride/FareSummary'
 import MapView from '@/components/book-ride/MapView'
 import { loadRazorpay } from '@/lib/razorpay'
 import { useEffect, useMemo, useRef, useState } from 'react'
+interface CreatedBooking { id: string; booking_number: string; status: string; created_at: string; estimated_cost: number | null }
 
 export default function ScheduleRidePage() {
   const defaultCenter = { lat: 13.0827, lng: 80.2707 }
@@ -65,6 +66,9 @@ export default function ScheduleRidePage() {
   const [distanceText, setDistanceText] = useState<string | null>(null)
   const [durationText, setDurationText] = useState<string | null>(null)
   const [fareAmount, setFareAmount] = useState<number | null>(null)
+  const [pendingBookingId, setPendingBookingId] = useState<string | null>(null)
+  const [createdBooking, setCreatedBooking] = useState<CreatedBooking | null>(null)
+  const razorpayRef = useRef<any | null>(null)
 
   useEffect(() => {
     if (typeof window === "undefined" || !("geolocation" in navigator)) return
@@ -336,8 +340,42 @@ export default function ScheduleRidePage() {
       const km = (leg.distance?.value || 0) / 1000
       const vehicle = vehicleTypes.find(v => v.name === selectedVehicle)
       const rate = vehicle ? parseRate(vehicle.price) : 0
-      setFareAmount(Math.round(km * rate))
+      const fare = Math.round(km * rate)
+      setFareAmount(fare)
       if (route.bounds && mapRef.current?.fitBounds) mapRef.current.fitBounds(route.bounds)
+
+      // Persist or update a pending booking draft with scheduled time
+      try {
+        const schedISO = scheduleDateTime ? scheduleDateTime.toISOString() : null
+        if (!pendingBookingId) {
+          const provisional = await fetch('/api/bookings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+            pickupLocation: pickupQuery,
+            pickupLatitude: pickupLocation?.lat,
+            pickupLongitude: pickupLocation?.lng,
+            dropoffLocation: dropQuery,
+            dropoffLatitude: dropLocation?.lat,
+            dropoffLongitude: dropLocation?.lng,
+            passengerCount: 1,
+            estimatedCost: fare,
+            bookingType: 'scheduled',
+            status: 'pending',
+            scheduledPickupTime: schedISO
+          }) })
+          const j = await provisional.json(); if (provisional.ok) setPendingBookingId(j.booking.id)
+        } else {
+          await fetch('/api/bookings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+            bookingId: pendingBookingId, action: 'update',
+            pickupLocation: pickupQuery,
+            pickupLatitude: pickupLocation?.lat,
+            pickupLongitude: pickupLocation?.lng,
+            dropoffLocation: dropQuery,
+            dropoffLatitude: dropLocation?.lat,
+            dropoffLongitude: dropLocation?.lng,
+            passengerCount: 1,
+            estimatedCost: fare,
+          }) })
+        }
+      } catch (e) { console.error('Failed to persist draft scheduled booking', e) }
     } catch (e) {
       console.error('Directions error', e)
     } finally {
@@ -353,9 +391,37 @@ export default function ScheduleRidePage() {
       const res = await fetch('/api/payments/razorpay/order', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ amount: fareAmount, currency: 'INR', notes: { vehicle: selectedVehicle || '', type: 'scheduled', date: scheduledDate, time: scheduledTime } }) })
       const j = await res.json(); if (!res.ok) throw new Error(j?.error || 'Failed to create order')
       const Razorpay = await loadRazorpay()
-      const options = { key: publicKey, amount: j.order.amount, currency: j.order.currency, name: 'Rento', description: 'Scheduled ride fare', order_id: j.order.id, theme: { color: '#171717' }, handler: function (_r: any) { console.log('Payment success', _r) }, modal: { ondismiss: () => console.log('Payment dismissed') } }
-      const rp = new Razorpay(options); rp.open()
+      const options = { key: publicKey, amount: j.order.amount, currency: j.order.currency, name: 'Rento', description: 'Scheduled ride fare', order_id: j.order.id, theme: { color: '#171717' },
+        handler: async function (_r: any) {
+          try {
+            if (pendingBookingId) {
+              const confirmRes = await fetch('/api/bookings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bookingId: pendingBookingId, action: 'payment_success', orderId: _r.razorpay_order_id, paymentId: _r.razorpay_payment_id, signature: _r.razorpay_signature }) })
+              const cj = await confirmRes.json(); if (!confirmRes.ok) throw new Error(cj.error || 'Failed to confirm booking')
+              setCreatedBooking(cj.booking)
+            }
+          } finally { try { razorpayRef.current?.close?.() } catch {} }
+        },
+        modal: { ondismiss: async () => {
+          if (pendingBookingId && !createdBooking) {
+            const cancelRes = await fetch('/api/bookings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bookingId: pendingBookingId, action: 'payment_failed', reason: 'User exited Razorpay' }) })
+            const cj = await cancelRes.json(); if (cancelRes.ok) setCreatedBooking(cj.booking)
+          }
+        } }
+      }
+      const rp = new Razorpay(options); razorpayRef.current = rp; rp.open()
     } catch (e) { console.error('PayNow error', e) }
+  }
+
+  async function handleCancel() {
+    try { try { razorpayRef.current?.close?.() } catch {}
+      if (pendingBookingId && !createdBooking) {
+        const res = await fetch('/api/bookings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bookingId: pendingBookingId, action: 'cancel', reason: 'User cancelled from UI' }) })
+        const j = await res.json(); if (res.ok) setCreatedBooking(j.booking)
+        setPendingBookingId(null)
+      }
+    } finally {
+      setPickupQuery(''); setDropQuery(''); setPickupPredictions([]); setDropPredictions([]); setPickupLocation(null); setDropLocation(null); setSelectedVehicle(null); setRouteResult(null); setDistanceText(null); setDurationText(null); setFareAmount(null); setScheduledDate(''); setScheduledTime('')
+    }
   }
 
   return (
@@ -446,6 +512,20 @@ export default function ScheduleRidePage() {
             </Button>
 
             <FareSummary distanceText={distanceText} durationText={durationText} fareAmount={fareAmount} onPayNow={handlePayNow} />
+            <div className="mt-3">
+              <Button variant="outline" className="w-full" onClick={handleCancel}>Cancel</Button>
+            </div>
+
+      {createdBooking && (
+              <div className="mt-4 p-3 rounded bg-white shadow text-sm">
+        <div className="font-medium text-[#171717] mb-1">{createdBooking.status === 'cancelled' || createdBooking.status === 'payment_failed' ? 'Booking Cancelled' : createdBooking.status === 'waiting_driver' ? 'Waiting for driver' : 'Booking Confirmed'}</div>
+                <div>Number: {createdBooking.booking_number}</div>
+                <div>Status: {createdBooking.status}</div>
+                {createdBooking.estimated_cost != null && <div>Estimated Fare: Rs {createdBooking.estimated_cost}</div>}
+        {createdBooking.status === 'waiting_driver' && <div className="text-xs text-gray-600 mt-1">We’re assigning a nearby driver. You’ll see details shortly.</div>}
+        {createdBooking.status === 'payment_failed' && <div className="text-xs text-red-600 mt-1">Payment failed or was dismissed.</div>}
+              </div>
+            )}
           </div>
 
           {/* Right Side - Map */}

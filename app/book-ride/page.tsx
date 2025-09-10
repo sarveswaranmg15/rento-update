@@ -6,8 +6,10 @@ import { Bell, Settings, User, MapPin } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
 import NavigationMenu from '@/components/navigation-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 // Map primitives are now encapsulated in MapView
 import { useEffect, useMemo, useRef, useState } from "react"
+import { useRouter } from 'next/navigation'
 import QuickActions from '@/components/quick-actions'
 import LocationAutocomplete from '@/components/book-ride/LocationAutocomplete'
 import VehicleSelector, { type Vehicle } from '@/components/book-ride/VehicleSelector'
@@ -15,7 +17,16 @@ import FareSummary from '@/components/book-ride/FareSummary'
 import MapView from '@/components/book-ride/MapView'
 import { loadRazorpay } from '@/lib/razorpay'
 
+interface CreatedBooking {
+  id: string
+  booking_number: string
+  status: string
+  created_at: string
+  estimated_cost: number | null
+}
+
 export default function BookRidePage() {
+  const router = useRouter()
   const defaultCenter = { lat: 13.0827, lng: 80.2707 }
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [mapZoom, setMapZoom] = useState(12)
@@ -48,6 +59,11 @@ export default function BookRidePage() {
   const [distanceText, setDistanceText] = useState<string | null>(null)
   const [durationText, setDurationText] = useState<string | null>(null)
   const [fareAmount, setFareAmount] = useState<number | null>(null)
+  const [creatingBooking, setCreatingBooking] = useState(false)
+  const [createdBooking, setCreatedBooking] = useState<CreatedBooking | null>(null)
+  const [pendingBookingId, setPendingBookingId] = useState<string | null>(null)
+  const [paymentOpened, setPaymentOpened] = useState(false)
+  const razorpayRef = useRef<any | null>(null)
 
   useEffect(() => {
     if (typeof window === "undefined" || !("geolocation" in navigator)) return
@@ -410,6 +426,49 @@ export default function BookRidePage() {
       if (route.bounds && mapRef.current?.fitBounds) {
         mapRef.current.fitBounds(route.bounds)
       }
+
+      // Persist or update a pending booking draft so we have data even if not paid
+      try {
+        if (!pendingBookingId) {
+          const provisional = await fetch('/api/bookings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              pickupLocation: pickupQuery,
+              pickupLatitude: pickupLocation?.lat,
+              pickupLongitude: pickupLocation?.lng,
+              dropoffLocation: dropQuery,
+              dropoffLatitude: dropLocation?.lat,
+              dropoffLongitude: dropLocation?.lng,
+              passengerCount: 1,
+              estimatedCost: fare,
+              bookingType: 'normal',
+              status: 'pending'
+            })
+          })
+          const provisionalJson = await provisional.json()
+          if (provisional.ok) setPendingBookingId(provisionalJson.booking.id)
+        } else {
+          await fetch('/api/bookings', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              bookingId: pendingBookingId,
+              action: 'update',
+              pickupLocation: pickupQuery,
+              pickupLatitude: pickupLocation?.lat,
+              pickupLongitude: pickupLocation?.lng,
+              dropoffLocation: dropQuery,
+              dropoffLatitude: dropLocation?.lat,
+              dropoffLongitude: dropLocation?.lng,
+              passengerCount: 1,
+              estimatedCost: fare,
+            })
+          })
+        }
+      } catch (persistErr) {
+        console.error('Failed to persist draft booking', persistErr)
+      }
     } catch (e) {
       console.error('Directions error', e)
     } finally {
@@ -426,6 +485,39 @@ export default function BookRidePage() {
         console.error('Missing NEXT_PUBLIC_RAZORPAY_KEY_ID in environment')
         return
       }
+
+      // Step 1: If no pending booking yet, create a provisional 'pending' booking BEFORE payment so we can cancel if user exits.
+      if (!pendingBookingId) {
+        setCreatingBooking(true)
+        try {
+          const provisional = await fetch('/api/bookings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              pickupLocation: pickupQuery,
+              pickupLatitude: pickupLocation?.lat,
+              pickupLongitude: pickupLocation?.lng,
+              dropoffLocation: dropQuery,
+              dropoffLatitude: dropLocation?.lat,
+              dropoffLongitude: dropLocation?.lng,
+              passengerCount: 1,
+              estimatedCost: fareAmount,
+              bookingType: 'normal',
+              status: 'pending'
+            })
+          })
+          const provisionalJson = await provisional.json()
+          if (!provisional.ok) throw new Error(provisionalJson.error || 'Failed to create provisional booking')
+          setPendingBookingId(provisionalJson.booking.id)
+        } catch (e) {
+          console.error('Failed to create provisional booking', e)
+          setCreatingBooking(false)
+          return
+        } finally {
+          setCreatingBooking(false)
+        }
+      }
+
       const res = await fetch('/api/payments/razorpay/order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -448,16 +540,113 @@ export default function BookRidePage() {
           contact: '',
         },
         theme: { color: '#171717' },
-        handler: function (_response: any) {
-          // TODO: verify payment on server and create booking
-          console.log('Payment success', _response)
+        handler: async function (_response: any) {
+          // After client-side payment success, create booking record
+            try {
+              setCreatingBooking(true)
+              // Confirm existing pending booking
+              if (pendingBookingId) {
+                const confirmRes = await fetch('/api/bookings', {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ bookingId: pendingBookingId, action: 'payment_success', orderId: _response.razorpay_order_id, paymentId: _response.razorpay_payment_id, signature: _response.razorpay_signature })
+                })
+                const confirmJson = await confirmRes.json()
+                if (!confirmRes.ok) throw new Error(confirmJson.error || 'Failed to confirm booking')
+                setCreatedBooking(confirmJson.booking)
+                console.log('Booking confirmed', confirmJson.booking)
+              }
+            } catch (err) {
+              console.error('Booking persistence failed', err)
+            } finally {
+              setCreatingBooking(false)
+              setPaymentOpened(false)
+            }
         },
-        modal: { ondismiss: () => console.log('Payment dismissed') },
+        modal: { ondismiss: async () => {
+          console.log('Payment dismissed')
+          setPaymentOpened(false)
+          // If a pending booking exists and not confirmed, cancel it.
+          if (pendingBookingId && !createdBooking) {
+            try {
+              const cancelRes = await fetch('/api/bookings', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ bookingId: pendingBookingId, action: 'payment_failed', reason: 'User exited Razorpay before paying' })
+              })
+              const cancelJson = await cancelRes.json()
+              if (cancelRes.ok) {
+                setCreatedBooking(cancelJson.booking)
+                console.log('Booking marked payment_failed due to dismissal')
+              }
+            } catch (e) {
+              console.error('Failed to cancel provisional booking after dismiss', e)
+            }
+          }
+        } },
       }
       const rp = new Razorpay(options)
+      setPaymentOpened(true)
+      razorpayRef.current = rp
       rp.open()
     } catch (e) {
       console.error('PayNow error', e)
+    }
+  }
+
+  async function handleCancel() {
+    try {
+      // Close Razorpay modal if open
+      try { razorpayRef.current?.close?.() } catch {}
+      setPaymentOpened(false)
+      // If there's a provisional booking, cancel it server-side
+      if (pendingBookingId && !createdBooking) {
+        const res = await fetch('/api/bookings', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bookingId: pendingBookingId, action: 'cancel', reason: 'User cancelled from UI' })
+        })
+        const j = await res.json()
+        if (res.ok) setCreatedBooking(j.booking)
+        setPendingBookingId(null)
+      } else if (!pendingBookingId && !createdBooking && pickupQuery && dropQuery && fareAmount != null) {
+        // If user cancels before payment and no provisional booking exists, still persist a cancelled booking for audit trail
+        try {
+          const cancelledRes = await fetch('/api/bookings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              pickupLocation: pickupQuery,
+              pickupLatitude: pickupLocation?.lat,
+              pickupLongitude: pickupLocation?.lng,
+              dropoffLocation: dropQuery,
+              dropoffLatitude: dropLocation?.lat,
+              dropoffLongitude: dropLocation?.lng,
+              passengerCount: 1,
+              estimatedCost: fareAmount,
+              bookingType: 'normal',
+              status: 'cancelled'
+            })
+          })
+          const cancelledJson = await cancelledRes.json()
+          if (cancelledRes.ok) setCreatedBooking(cancelledJson.booking)
+        } catch (e) {
+          console.error('Failed to persist cancelled booking on user cancel', e)
+        }
+      }
+    } finally {
+      // Reset the form state
+      setPickupQuery('')
+      setDropQuery('')
+      setPickupPredictions([])
+      setDropPredictions([])
+      setPickupLocation(null)
+      setDropLocation(null)
+      setSelectedVehicle(null)
+      setRouteResult(null)
+      setDistanceText(null)
+      setDurationText(null)
+      setFareAmount(null)
     }
   }
 
@@ -485,15 +674,24 @@ export default function BookRidePage() {
           <div className="w-96 p-6">
             {/* Header with user controls */}
             <div className="flex items-center justify-end gap-3 mb-8">
-              <Button variant="ghost" size="sm">
+              <Button variant="ghost" size="sm" onClick={() => router.push('/notifications')} aria-label="Notifications">
                 <Bell className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="sm">
+              <Button variant="ghost" size="sm" onClick={() => router.push('/settings')} aria-label="Settings">
                 <Settings className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="sm">
-                <User className="h-4 w-4" />
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" aria-label="Profile menu">
+                    <User className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-40">
+                  <DropdownMenuItem onClick={() => router.push('/profile')}>Profile</DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => { try { (window as any).location.href = '/api/auth/logout' } catch { location.href = '/api/auth/logout' } }}>Logout</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
 
             
@@ -544,6 +742,28 @@ export default function BookRidePage() {
             </Button>
 
             <FareSummary distanceText={distanceText} durationText={durationText} fareAmount={fareAmount} onPayNow={handlePayNow} />
+            <div className="mt-3">
+              <Button variant="outline" className="w-full" onClick={handleCancel} disabled={creatingBooking}>
+                Cancel
+              </Button>
+            </div>
+            {creatingBooking && <div className="mt-4 text-sm text-gray-600">Creating booking…</div>}
+            {createdBooking && (
+              <div className="mt-4 p-3 rounded bg-white shadow text-sm">
+                <div className="font-medium text-[#171717] mb-1">
+                  {createdBooking.status === 'cancelled' || createdBooking.status === 'payment_failed' || (createdBooking as any).status === 'booking_failed'
+                    ? 'Booking Cancelled'
+                    : createdBooking.status === 'waiting_driver'
+                      ? 'Waiting for driver'
+                      : 'Booking Confirmed'}
+                </div>
+                <div>Number: {createdBooking.booking_number}</div>
+                <div>Status: {createdBooking.status}</div>
+                {createdBooking.estimated_cost != null && <div>Estimated Fare: Rs {createdBooking.estimated_cost}</div>}
+                {(createdBooking.status === 'cancelled' || createdBooking.status === 'payment_failed') && <div className="text-xs text-red-600 mt-1">Payment window closed before completion.</div>}
+                {createdBooking.status === 'waiting_driver' && <div className="text-xs text-gray-600 mt-1">We’re assigning a nearby driver. You’ll see details shortly.</div>}
+              </div>
+            )}
           </div>
 
           {/* Right Side - Map */}

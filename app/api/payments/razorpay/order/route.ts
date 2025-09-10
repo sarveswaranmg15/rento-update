@@ -15,10 +15,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid amount' }, { status: 400 })
     }
 
-    const key_id = process.env.RAZORPAY_KEY_ID
+    const key_id = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID
     const key_secret = process.env.RAZORPAY_KEY_SECRET
-    if (!key_id || !key_secret) {
+    if (!key_id && !key_secret) {
       return NextResponse.json({ error: 'Razorpay keys not configured' }, { status: 500 })
+    } else if (!key_id) {
+      return NextResponse.json({ error: 'RAZORPAY_KEY_ID missing' }, { status: 500 })
+    } else if (!key_secret) {
+      return NextResponse.json({ error: 'RAZORPAY_KEY_SECRET missing' }, { status: 500 })
     }
 
     const instance = new Razorpay({ key_id, key_secret })

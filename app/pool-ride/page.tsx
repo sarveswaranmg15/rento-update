@@ -13,10 +13,13 @@ import FareSummary from '@/components/book-ride/FareSummary'
 import MapView from '@/components/book-ride/MapView'
 import { loadRazorpay } from '@/lib/razorpay'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { useToast } from '@/components/ui/use-toast'
 import { useSearchParams } from 'next/navigation'
+interface CreatedBooking { id: string; booking_number: string; status: string; created_at: string; estimated_cost: number | null }
 
 export default function PoolRidePage() {
+  const router = useRouter()
   const { toast } = useToast()
   const [mode, setMode] = useState<'create' | 'book'>('create')
   const searchParams = useSearchParams()
@@ -73,6 +76,9 @@ export default function PoolRidePage() {
   const [durationText, setDurationText] = useState<string | null>(null)
   const [fareAmount, setFareAmount] = useState<number | null>(null)
   const [farePerSeat, setFarePerSeat] = useState<number | null>(null)
+  const [pendingBookingId, setPendingBookingId] = useState<string | null>(null)
+  const [createdBooking, setCreatedBooking] = useState<CreatedBooking | null>(null)
+  const razorpayRef = useRef<any | null>(null)
 
   useEffect(() => {
     if (typeof window === "undefined" || !("geolocation" in navigator)) return
@@ -350,6 +356,41 @@ export default function PoolRidePage() {
       setFarePerSeat(perSeat)
       setFareAmount(perSeat * seats)
       if (route.bounds && mapRef.current?.fitBounds) mapRef.current.fitBounds(route.bounds)
+
+      // Persist/update pending booking draft (create mode only)
+      if (mode !== 'book') {
+        try {
+          const scheduledISO = scheduleDateTime ? scheduleDateTime.toISOString() : null
+          if (!pendingBookingId) {
+            const provisional = await fetch('/api/bookings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+              pickupLocation: pickupQuery,
+              pickupLatitude: pickupLocation?.lat,
+              pickupLongitude: pickupLocation?.lng,
+              dropoffLocation: dropQuery,
+              dropoffLatitude: dropLocation?.lat,
+              dropoffLongitude: dropLocation?.lng,
+              passengerCount: seats,
+              estimatedCost: perSeat * seats,
+              bookingType: 'pool',
+              status: 'pending',
+              scheduledPickupTime: scheduledISO
+            }) })
+            const j = await provisional.json(); if (provisional.ok) setPendingBookingId(j.booking.id)
+          } else {
+            await fetch('/api/bookings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+              bookingId: pendingBookingId, action: 'update',
+              pickupLocation: pickupQuery,
+              pickupLatitude: pickupLocation?.lat,
+              pickupLongitude: pickupLocation?.lng,
+              dropoffLocation: dropQuery,
+              dropoffLatitude: dropLocation?.lat,
+              dropoffLongitude: dropLocation?.lng,
+              passengerCount: seats,
+              estimatedCost: perSeat * seats,
+            }) })
+          }
+        } catch (e) { console.error('Failed to persist draft pool booking', e) }
+      }
     } catch (e) {
       console.error('Directions error', e)
       toast({ title: 'Failed to get route', description: 'Please adjust locations and try again.' })
@@ -366,9 +407,53 @@ export default function PoolRidePage() {
       const res = await fetch('/api/payments/razorpay/order', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ amount: fareAmount, currency: 'INR', notes: { vehicle: selectedVehicle || '', type: 'pool', seats, perSeat: farePerSeat, mode } }) })
       const j = await res.json(); if (!res.ok) throw new Error(j?.error || 'Failed to create order')
       const Razorpay = await loadRazorpay()
-      const options = { key: publicKey, amount: j.order.amount, currency: j.order.currency, name: 'Rento', description: 'Pool ride fare', order_id: j.order.id, theme: { color: '#171717' }, handler: function (_r: any) { console.log('Payment success', _r) }, modal: { ondismiss: () => console.log('Payment dismissed') } }
-      const rp = new Razorpay(options); rp.open()
+      const options = { key: publicKey, amount: j.order.amount, currency: j.order.currency, name: 'Rento', description: 'Pool ride fare', order_id: j.order.id, theme: { color: '#171717' },
+        handler: async function (_r: any) {
+          try {
+            if (pendingBookingId) {
+              const confirmRes = await fetch('/api/bookings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bookingId: pendingBookingId, action: 'payment_success', orderId: _r.razorpay_order_id, paymentId: _r.razorpay_payment_id, signature: _r.razorpay_signature }) })
+              const cj = await confirmRes.json(); if (!confirmRes.ok) throw new Error(cj.error || 'Failed to confirm booking')
+              setCreatedBooking(cj.booking)
+            }
+          } finally { try { razorpayRef.current?.close?.() } catch {} }
+        },
+        modal: { ondismiss: async () => {
+          if (pendingBookingId && !createdBooking) {
+            const cancelRes = await fetch('/api/bookings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bookingId: pendingBookingId, action: 'payment_failed', reason: 'User exited Razorpay' }) })
+            const cj = await cancelRes.json(); if (cancelRes.ok) setCreatedBooking(cj.booking)
+          }
+        } }
+      }
+      const rp = new Razorpay(options); razorpayRef.current = rp; rp.open()
     } catch (e) { console.error('PayNow error', e); toast({ title: 'Payment error', description: 'Please try again.' }) }
+  }
+
+  async function handleCancel() {
+    try { try { razorpayRef.current?.close?.() } catch {}
+      if (pendingBookingId && !createdBooking) {
+        const res = await fetch('/api/bookings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bookingId: pendingBookingId, action: 'cancel', reason: 'User cancelled from UI' }) })
+        const j = await res.json(); if (res.ok) setCreatedBooking(j.booking)
+        setPendingBookingId(null)
+      } else if (!pendingBookingId && !createdBooking && pickupQuery && dropQuery && fareAmount != null) {
+        try {
+          const cancelledRes = await fetch('/api/bookings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+            pickupLocation: pickupQuery,
+            pickupLatitude: pickupLocation?.lat,
+            pickupLongitude: pickupLocation?.lng,
+            dropoffLocation: dropQuery,
+            dropoffLatitude: dropLocation?.lat,
+            dropoffLongitude: dropLocation?.lng,
+            passengerCount: seats,
+            estimatedCost: fareAmount,
+            bookingType: 'pool',
+            status: 'cancelled'
+          }) })
+          const cj = await cancelledRes.json(); if (cancelledRes.ok) setCreatedBooking(cj.booking)
+        } catch (e) { console.error('Failed to persist cancelled pool booking on cancel', e) }
+      }
+    } finally {
+      setPickupQuery(''); setDropQuery(''); setPickupPredictions([]); setDropPredictions([]); setPickupLocation(null); setDropLocation(null); setSelectedVehicle(null); setRouteResult(null); setDistanceText(null); setDurationText(null); setFareAmount(null); setFarePerSeat(null); setScheduledDate(''); setScheduledTime(''); setSeats(1)
+    }
   }
 
   return (
@@ -390,6 +475,18 @@ export default function PoolRidePage() {
         <div className="flex-1 flex">
           {/* Left Side - Pool Form */}
           <div className="p-6 w-96">
+            {/* Header with user controls */}
+            <div className="flex items-center justify-end gap-3 mb-8">
+              <Button variant="ghost" size="sm" onClick={() => router.push('/notifications')} aria-label="Notifications">
+                <Bell className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => router.push('/settings')} aria-label="Settings">
+                <Settings className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => router.push('/profile')} aria-label="Profile">
+                <User className="h-4 w-4" />
+              </Button>
+            </div>
             {/* Pool Type Toggle */}
             <div className="flex gap-2 mb-6">
               <Button onClick={() => setMode('create')} className={`flex-1 font-semibold rounded-full py-2 shadow-md transition-colors ${mode==='create' ? 'bg-[#171717] text-white hover:bg-[#333333]' : 'bg-white text-[#171717] border border-[#d8d8d8] hover:bg-[#f5f5f5]'}`}>Create Pool</Button>
@@ -476,6 +573,7 @@ export default function PoolRidePage() {
                     {calculating ? 'Calculating…' : 'Get Fare Details'}
                   </Button>
                   <Button className="w-full bg-[#10b981] hover:bg-[#0ea971] text-white font-medium py-3 rounded-full shadow disabled:opacity-50" onClick={handlePayNow} disabled={!fareAmount}>Pay Now</Button>
+                  <Button variant="outline" className="w-full" onClick={handleCancel}>Cancel</Button>
                   <Button
                     className="w-full bg-[#ffc641] hover:bg-[#ffb800] text-[#171717] font-medium py-3 rounded-full shadow"
                     onClick={async () => {
@@ -495,6 +593,17 @@ export default function PoolRidePage() {
             </div>
             {mode !== 'book' && (
               <FareSummary distanceText={distanceText} durationText={durationText} fareAmount={fareAmount} onPayNow={handlePayNow} />
+            )}
+
+      {createdBooking && (
+              <div className="mt-4 p-3 rounded bg-white shadow text-sm">
+        <div className="font-medium text-[#171717] mb-1">{createdBooking.status === 'cancelled' || createdBooking.status === 'payment_failed' ? 'Booking Cancelled' : createdBooking.status === 'waiting_driver' ? 'Waiting for driver' : 'Booking Confirmed'}</div>
+                <div>Number: {createdBooking.booking_number}</div>
+                <div>Status: {createdBooking.status}</div>
+                {createdBooking.estimated_cost != null && <div>Estimated Fare: Rs {createdBooking.estimated_cost}</div>}
+                {createdBooking.status === 'waiting_driver' && <div className="text-xs text-gray-600 mt-1">We’re assigning a nearby driver. You’ll see details shortly.</div>}
+        {createdBooking.status === 'payment_failed' && <div className="text-xs text-red-600 mt-1">Payment failed or was dismissed.</div>}
+              </div>
             )}
           </div>
           {/* Right Side - Map */}
