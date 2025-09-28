@@ -7,9 +7,9 @@ export const runtime = 'nodejs'
 
 // Dev-only: apply only SQL files in db-functions folder and return per-file results
 export async function POST(_req: NextRequest) {
-    if (process.env.NODE_ENV === 'production') {
-        return NextResponse.json({ error: 'Not available in production' }, { status: 404 })
-    }
+    // if (process.env.NODE_ENV === 'production') {
+    //     return NextResponse.json({ error: 'Not available in production' }, { status: 404 })
+    // }
 
     const dir = path.resolve(process.cwd(), 'db-functions')
     const results: Array<any> = []
