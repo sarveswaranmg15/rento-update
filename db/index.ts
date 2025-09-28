@@ -21,6 +21,7 @@ if (!connectionString) {
 
 const pool = new Pool({
     connectionString,
+    ssl: { rejectUnauthorized: false } // for production purposes, comment while testing locally
 })
 
 export default pool
