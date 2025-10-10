@@ -241,6 +241,18 @@ export async function PATCH(req: NextRequest) {
             if (!res.rowCount) return NextResponse.json({ error: 'Not found' }, { status: 404 })
             return NextResponse.json({ ok: true, booking: res.rows[0] })
         }
+        if (action === 'pay_later') {
+            // mark booking as payment pending (confirmed without payment)
+            const upd = await pool.query(
+                `UPDATE ${schema}.bookings 
+                 SET status = 'payment_pending', updated_at = NOW() 
+                 WHERE id = $1 
+                 RETURNING id, booking_number, status, estimated_cost, created_at`,
+                [bookingId]
+            )
+            if (!upd.rowCount) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+            return NextResponse.json({ ok: true, booking: upd.rows[0] })
+        }
         if (action === 'payment_failed' || action === 'booking_failed') {
             // mark payment_failed but still capture cancellation reason and timestamp for audit
             const upd = await pool.query(

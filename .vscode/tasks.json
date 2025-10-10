@@ -20,6 +20,16 @@
 			"isBackground": false,
 			"problemMatcher": [],
 			"group": "build"
+		},
+		{
+			"label": "Dev server",
+			"type": "shell",
+			"command": "pnpm dev"
+		},
+		{
+			"label": "Curl seed",
+			"type": "shell",
+			"command": "curl -s -X POST http://localhost:3001/api/dev/seed | cat"
 		}
 	]
 }

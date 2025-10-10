@@ -23,6 +23,7 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false)
   const fileRef = useRef<HTMLInputElement | null>(null)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
+  const [pendingPayments, setPendingPayments] = useState<any[]>([])
 
   // helper to normalize different user shapes
   function normalize(u:any){
@@ -123,6 +124,26 @@ export default function ProfilePage() {
   }
 
   useEffect(()=>{ loadProfile() }, [])
+
+  // load pending payment bookings for the current user
+  useEffect(() => {
+    async function loadPending() {
+      try {
+        const selected = sessionStorage.getItem('selectedTenantSchema')
+        const userRaw = sessionStorage.getItem('user')
+        const uid = userRaw ? (JSON.parse(userRaw)?.id || JSON.parse(userRaw)?.user_id || null) : null
+        const params = new URLSearchParams()
+        if (uid) params.set('userId', String(uid))
+        params.set('status', 'payment_pending')
+        const res = await fetch('/api/bookings?' + params.toString())
+        if (res.ok) {
+          const data = await res.json()
+          setPendingPayments(data.bookings || [])
+        }
+      } catch (e) { console.error('Failed to load pending payments', e) }
+    }
+    loadPending()
+  }, [])
 
   async function save(avatarOverride?: string, avatarImageBase64?: string){
     if(!profile?.id) return
@@ -280,6 +301,29 @@ export default function ProfilePage() {
                       onChange={(e:any)=>setFavourites(e.target.value)}
                     />
                   </div>
+                </div>
+
+                {/* Pending Payments */}
+                <div className="mt-8">
+                  <h3 className="text-lg font-bold text-[#171717] mb-3">Payment Pending</h3>
+                  {pendingPayments.length === 0 ? (
+                    <div className="text-sm text-[#666]">No pending payments.</div>
+                  ) : (
+                    <div className="space-y-3">
+                      {pendingPayments.map((b:any) => (
+                        <div key={b.id} className="flex items-center justify-between bg-white/70 border border-[#e5e5e5] rounded p-3">
+                          <div>
+                            <div className="text-sm font-medium text-[#171717]">{b.pickup} → {b.dropoff}</div>
+                            <div className="text-xs text-[#666]">Booking {b.bookingNumber} · Fare ₹{(b.fare||0).toLocaleString()}</div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs px-2 py-1 bg-yellow-100 text-yellow-800 rounded">payment_pending</span>
+                            <Button className="bg-[#171717] hover:bg-[#333] text-white" onClick={() => { try { location.href = '/bookings' } catch { window.location.href = '/bookings' } }}>Pay Now</Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

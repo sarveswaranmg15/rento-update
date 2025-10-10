@@ -10,7 +10,8 @@ import NavigationMenu from '@/components/navigation-menu'
 import Link from "next/link"
 import Image from "next/image"
 import { useEffect, useState } from 'react'
-import { Chart } from 'react-google-charts'
+import dynamic from 'next/dynamic'
+const Chart = dynamic(() => import('react-google-charts').then(m => m.Chart), { ssr: false })
 
 export default function AnalyticsPage() {
   const [metrics, setMetrics] = useState<any | null>(null)

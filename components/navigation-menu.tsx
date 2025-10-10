@@ -18,6 +18,7 @@ type Props = {
   | 'book-ride'
   | 'pool-ride'
   | 'schedule-ride'
+  | 'settings'
 }
 
 export default function NavigationMenu({ active }: Props) {

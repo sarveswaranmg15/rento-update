@@ -19,9 +19,29 @@ if (!connectionString) {
     throw new Error('DATABASE_URL is not defined in environment variables')
 }
 
+// Determine SSL settings
+let ssl: false | { rejectUnauthorized: boolean } = false
+try {
+    const sslEnabled = (getEnv('DATABASE_SSL_ENABLED') || '').toLowerCase() === 'true'
+    const rejectUnauthorized = (getEnv('DATABASE_REJECT_UNAUTHORIZED') || '').toLowerCase() === 'true'
+    // Prefer hostname from DATABASE_URL; fallback to env host
+    let hostFromUrl = ''
+    try { hostFromUrl = new URL(connectionString).hostname } catch {}
+    const host = hostFromUrl || getEnv('DATABASE_HOST') || ''
+    const isLocal = host === 'localhost' || host === '127.0.0.1'
+    if (sslEnabled && !isLocal) {
+        ssl = { rejectUnauthorized }
+    } else {
+        ssl = false
+    }
+    console.debug('DB debug — resolved SSL =', ssl ? `{ rejectUnauthorized: ${rejectUnauthorized} }` : 'false', 'host =', host || '(unknown)')
+} catch {
+    ssl = false
+}
+
 const pool = new Pool({
     connectionString,
-    ssl: { rejectUnauthorized: false } // for production purposes, comment while testing locally
+    ssl,
 })
 
 export default pool

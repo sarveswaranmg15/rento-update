@@ -6,11 +6,13 @@ export default function FareSummary({
   durationText,
   fareAmount,
   onPayNow,
+  onPayLater,
 }: {
   distanceText: string | null
   durationText: string | null
   fareAmount: number | null
   onPayNow: () => void
+  onPayLater?: () => void
 }) {
   if (fareAmount == null && !distanceText && !durationText) return null
   return (
@@ -29,7 +31,11 @@ export default function FareSummary({
       </div>
       <div className="grid grid-cols-2 gap-3">
         <Button className="bg-[#10b981] hover:bg-[#0ea971] text-white" onClick={onPayNow}>Pay Now</Button>
-        <Button variant="outline" className="border-[#d8d8d8]">Pay Later</Button>
+        {onPayLater ? (
+          <Button variant="outline" className="border-[#d8d8d8]" onClick={onPayLater}>Pay Later</Button>
+        ) : (
+          <Button variant="outline" className="border-[#d8d8d8]" disabled>Pay Later</Button>
+        )}
       </div>
     </div>
   )

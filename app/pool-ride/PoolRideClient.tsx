@@ -428,6 +428,36 @@ export default function PoolRideClient() {
     } catch (e) { console.error('PayNow error', e); toast({ title: 'Payment error', description: 'Please try again.' }) }
   }
 
+  async function handlePayLater() {
+    try {
+      if (!fareAmount) return
+      // Ensure provisional booking exists
+      if (!pendingBookingId) {
+        const scheduledISO = scheduleDateTime ? scheduleDateTime.toISOString() : null
+        const provisional = await fetch('/api/bookings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+          pickupLocation: pickupQuery,
+          pickupLatitude: pickupLocation?.lat,
+          pickupLongitude: pickupLocation?.lng,
+          dropoffLocation: dropQuery,
+          dropoffLatitude: dropLocation?.lat,
+          dropoffLongitude: dropLocation?.lng,
+          passengerCount: seats,
+          estimatedCost: fareAmount,
+          bookingType: 'pool',
+          status: 'pending',
+          scheduledPickupTime: scheduledISO
+        }) })
+        const j = await provisional.json(); if (!provisional.ok) throw new Error(j.error || 'Failed to create provisional booking')
+        setPendingBookingId(j.booking.id)
+      }
+      const id = pendingBookingId || ''
+      if (!id) return
+      const res = await fetch('/api/bookings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bookingId: id, action: 'pay_later' }) })
+      const j2 = await res.json(); if (!res.ok) throw new Error(j2.error || 'Failed to mark pay later')
+      setCreatedBooking(j2.booking)
+    } catch (e) { console.error('PayLater error', e); toast({ title: 'Pay Later failed', description: 'Please try again.' }) }
+  }
+
   async function handleCancel() {
     try { try { (razorpayRef.current as any)?.close?.() } catch {}
       if (pendingBookingId && !createdBooking) {
@@ -592,7 +622,7 @@ export default function PoolRideClient() {
               )}
             </div>
             {mode !== 'book' && (
-              <FareSummary distanceText={distanceText} durationText={durationText} fareAmount={fareAmount} onPayNow={handlePayNow} />
+              <FareSummary distanceText={distanceText} durationText={durationText} fareAmount={fareAmount} onPayNow={handlePayNow} onPayLater={handlePayLater} />
             )}
 
             {createdBooking && (

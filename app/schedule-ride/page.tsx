@@ -412,6 +412,36 @@ export default function ScheduleRidePage() {
     } catch (e) { console.error('PayNow error', e) }
   }
 
+  async function handlePayLater() {
+    try {
+      if (!fareAmount) return
+      // Ensure a provisional booking exists first
+      if (!pendingBookingId) {
+        const schedISO = scheduleDateTime ? scheduleDateTime.toISOString() : null
+        const provisional = await fetch('/api/bookings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+          pickupLocation: pickupQuery,
+          pickupLatitude: pickupLocation?.lat,
+          pickupLongitude: pickupLocation?.lng,
+          dropoffLocation: dropQuery,
+          dropoffLatitude: dropLocation?.lat,
+          dropoffLongitude: dropLocation?.lng,
+          passengerCount: 1,
+          estimatedCost: fareAmount,
+          bookingType: 'scheduled',
+          status: 'pending',
+          scheduledPickupTime: schedISO
+        }) })
+        const j = await provisional.json(); if (!provisional.ok) throw new Error(j.error || 'Failed to create provisional booking')
+        setPendingBookingId(j.booking.id)
+      }
+      const id = pendingBookingId || ''
+      if (!id) return
+      const res = await fetch('/api/bookings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bookingId: id, action: 'pay_later' }) })
+      const j2 = await res.json(); if (!res.ok) throw new Error(j2.error || 'Failed to mark pay later')
+      setCreatedBooking(j2.booking)
+    } catch (e) { console.error('PayLater error', e) }
+  }
+
   async function handleCancel() {
     try { try { razorpayRef.current?.close?.() } catch {}
       if (pendingBookingId && !createdBooking) {
@@ -511,7 +541,7 @@ export default function ScheduleRidePage() {
               {calculating ? 'Calculating…' : 'Get Fare Details'}
             </Button>
 
-            <FareSummary distanceText={distanceText} durationText={durationText} fareAmount={fareAmount} onPayNow={handlePayNow} />
+            <FareSummary distanceText={distanceText} durationText={durationText} fareAmount={fareAmount} onPayNow={handlePayNow} onPayLater={handlePayLater} />
             <div className="mt-3">
               <Button variant="outline" className="w-full" onClick={handleCancel}>Cancel</Button>
             </div>

@@ -594,6 +594,54 @@ export default function BookRidePage() {
     }
   }
 
+  async function handlePayLater() {
+    try {
+      if (!fareAmount) return
+      // Ensure we have a provisional booking to mark as payment pending
+      if (!pendingBookingId) {
+        setCreatingBooking(true)
+        try {
+          const provisional = await fetch('/api/bookings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              pickupLocation: pickupQuery,
+              pickupLatitude: pickupLocation?.lat,
+              pickupLongitude: pickupLocation?.lng,
+              dropoffLocation: dropQuery,
+              dropoffLatitude: dropLocation?.lat,
+              dropoffLongitude: dropLocation?.lng,
+              passengerCount: 1,
+              estimatedCost: fareAmount,
+              bookingType: 'normal',
+              status: 'pending'
+            })
+          })
+          const provisionalJson = await provisional.json()
+          if (!provisional.ok) throw new Error(provisionalJson.error || 'Failed to create provisional booking')
+          setPendingBookingId(provisionalJson.booking.id)
+        } finally {
+          setCreatingBooking(false)
+        }
+      }
+      const id = pendingBookingId || ''
+      if (!id) return
+      const res = await fetch('/api/bookings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId: id, action: 'pay_later' })
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || 'Failed to mark as pay later')
+      setCreatedBooking(j.booking)
+      // Reset some interactive state; keep createdBooking visible
+      setPendingBookingId(null)
+    } catch (e) {
+      console.error('PayLater error', e)
+      alert('Failed to set Pay Later. Please try again.')
+    }
+  }
+
   async function handleCancel() {
     try {
       // Close Razorpay modal if open
@@ -741,7 +789,7 @@ export default function BookRidePage() {
               {calculating ? 'Calculating…' : 'Get Fare Details'}
             </Button>
 
-            <FareSummary distanceText={distanceText} durationText={durationText} fareAmount={fareAmount} onPayNow={handlePayNow} />
+            <FareSummary distanceText={distanceText} durationText={durationText} fareAmount={fareAmount} onPayNow={handlePayNow} onPayLater={handlePayLater} />
             <div className="mt-3">
               <Button variant="outline" className="w-full" onClick={handleCancel} disabled={creatingBooking}>
                 Cancel
